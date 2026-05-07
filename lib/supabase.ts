@@ -4,10 +4,10 @@ import { getBusinessDaysCount } from './date-utils';
 // =============================
 // Konfigurasi Supabase
 // =============================
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://tkrrjvcgviwnliinovik.supabase.co"
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://leoriloxnohuwzyapcou.supabase.co"
 const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRrcnJqdmNndml3bmxpaW5vdmlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxMDE4MjQsImV4cCI6MjA3MDY3NzgyNH0.uf7R06Gd6Mgf_3Zv3Q184HWPqzo6kbrfhQ1BkkdM9iM"
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxlb3JpbG94bm9odXd6eWFwY291Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjcyOTUsImV4cCI6MjA5Mzc0MzI5NX0.g0FEx9DeD-Lfi6ZFZcFu14iswzhAGKa0Z9SHuk03S34"
 
 if (!supabaseUrl) {
   throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL environment variable.")
