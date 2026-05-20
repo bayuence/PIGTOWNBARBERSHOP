@@ -41,7 +41,7 @@ interface Service {
   name: string
   price: number
   duration: number
-  isActive: boolean
+  aktif: boolean  // Changed from isActive
   category: string
 }
 
@@ -53,12 +53,21 @@ interface Shift {
   days: string[]
   maxEmployees: number
   currentEmployees: number
-  isActive: boolean
+  status: string  // Changed from isActive to status
   breakTime?: {
     start: string
     end: string
     duration: number
   }
+  minStaff: number
+  hasBreakTime?: boolean
+  breakTimes?: Array<{
+    id: string
+    start: string
+    end: string
+    duration: number
+  }>
+}
   minStaff: number
   hasBreakTime?: boolean
   breakTimes?: Array<{
@@ -81,6 +90,8 @@ interface NewShift {
     end: string
     duration: number
   }>
+  status?: string  // Changed from isActive to status
+}>
   isActive?: boolean
 }
 
@@ -90,7 +101,7 @@ interface Employee {
   position: string
   phone: string
   email: string
-  isActive: boolean
+  status: string  // Changed from isActive to status ('active' | 'inactive')
   shifts: string[]
   salary: number
   commission: number
@@ -102,7 +113,7 @@ interface BranchTarget {
   target: number
   current: number
   period: "daily" | "weekly" | "monthly"
-  isActive: boolean
+  status: string  // Changed from isActive to status
 }
 
 interface Branch {
@@ -166,7 +177,7 @@ export default function BranchManagement() {
     days: [],
     hasBreakTime: false,
     breakTimes: [],
-    isActive: true,
+    status: 'active',
   })
 
   const [newBranch, setNewBranch] = useState<Partial<Branch>>({
@@ -198,7 +209,7 @@ export default function BranchManagement() {
     name: "",
     price: 0,
     duration: 30,
-    isActive: true,
+    status: 'active',
     category: "haircut",
   })
 
@@ -207,7 +218,7 @@ export default function BranchManagement() {
     position: "barber",
     phone: "",
     email: "",
-    isActive: true,
+    status: 'active',
     shifts: [],
     salary: 0,
     commission: 10,
@@ -218,7 +229,7 @@ export default function BranchManagement() {
     target: 0,
     current: 0,
     period: "monthly",
-    isActive: true,
+    status: 'active',
   })
 
   const [enrichedBranches, setEnrichedBranches] = useState<Branch[]>([])
@@ -305,10 +316,10 @@ export default function BranchManagement() {
               days: shift.days || [],
               currentEmployees: shift.current_employees || shift.currentEmployees || 0,
               isActive:
-                shift.is_active !== undefined
-                  ? shift.is_active
-                  : shift.isActive !== undefined
-                    ? shift.isActive
+                shift.status !== undefined
+                  ? shift.status
+                  : shift.status === 'active' !== undefined
+                    ? shift.status === 'active'
                     : true,
               breakTimes: shift.break_times || shift.breakTimes || [],
               minStaff: shift.min_staff || shift.minStaff || 1,
@@ -579,7 +590,7 @@ export default function BranchManagement() {
         endTime: newShift.endTime || "17:00",
         days: newShift.days || [],
         currentEmployees: 0,
-        isActive: true,
+        status: 'active',
         breakTimes: newShift.breakTimes || [],
         minStaff: 1,
       }
@@ -597,7 +608,7 @@ export default function BranchManagement() {
             end_time: shift.endTime,
             days: shift.days,
             current_employees: shift.currentEmployees,
-            is_active: shift.isActive,
+            is_active: shift.status === 'active',
             break_times: shift.breakTimes,
             min_staff: shift.minStaff,
           })),
@@ -623,7 +634,7 @@ export default function BranchManagement() {
         days: [],
         hasBreakTime: false,
         breakTimes: [],
-        isActive: true,
+        status: 'active',
       })
       setIsShiftDialogOpen(false)
       toast.success("Shift berhasil ditambahkan")
@@ -671,7 +682,7 @@ export default function BranchManagement() {
       name: newService.name,
       price: newService.price || 0,
       duration: newService.duration || 30,
-      isActive: true,
+      status: 'active',
       category: newService.category || "haircut",
     }
 
@@ -685,7 +696,7 @@ export default function BranchManagement() {
       name: "",
       price: 0,
       duration: 30,
-      isActive: true,
+      status: 'active',
       category: "haircut",
     })
     setIsServiceDialogOpen(false)
@@ -704,7 +715,7 @@ export default function BranchManagement() {
       position: newEmployee.position || "barber",
       phone: newEmployee.phone,
       email: newEmployee.email || "",
-      isActive: true,
+      status: 'active',
       shifts: [],
       salary: newEmployee.salary || 0,
       commission: newEmployee.commission || 10,
@@ -721,7 +732,7 @@ export default function BranchManagement() {
       position: "barber",
       phone: "",
       email: "",
-      isActive: true,
+      status: 'active',
       shifts: [],
       salary: 0,
       commission: 10,
@@ -742,7 +753,7 @@ export default function BranchManagement() {
       target: newTarget.target || 0,
       current: 0,
       period: newTarget.period || "monthly",
-      isActive: true,
+      status: 'active',
     }
 
     setBranches(
@@ -756,7 +767,7 @@ export default function BranchManagement() {
       target: 0,
       current: 0,
       period: "monthly",
-      isActive: true,
+      status: 'active',
     })
     setIsTargetDialogOpen(false)
     toast.success("Target berhasil ditambahkan")
@@ -780,7 +791,7 @@ export default function BranchManagement() {
       days: shift.days || [],
       breakTimes: shift.breakTimes || [],
       hasBreakTime: shift.hasBreakTime || false,
-      isActive: true,
+      status: 'active',
     })
     setIsEditShiftDialogOpen(true)
   }
@@ -802,7 +813,7 @@ export default function BranchManagement() {
         days: newShift.days || [],
         breakTimes: newShift.breakTimes || [],
         hasBreakTime: newShift.hasBreakTime || false,
-        isActive: true,
+        status: 'active',
       }
 
       // Update shifts array in branches table
@@ -835,7 +846,7 @@ export default function BranchManagement() {
         days: [],
         breakTimes: [],
         hasBreakTime: false,
-        isActive: true,
+        status: 'active',
       })
       setIsEditShiftDialogOpen(false)
       toast.success("Shift berhasil diperbarui")
@@ -1594,8 +1605,8 @@ export default function BranchManagement() {
                           <div className="flex items-center gap-2">
                             <h4 className="font-medium">{service.name}</h4>
                             <Badge variant="outline">{service.category}</Badge>
-                            <Badge variant={service.isActive ? "default" : "secondary"}>
-                              {service.isActive ? "Aktif" : "Nonaktif"}
+                            <Badge variant={service.aktif ? "default" : "secondary"}>
+                              {service.aktif ? "Aktif" : "Nonaktif"}
                             </Badge>
                           </div>
                           <div className="text-sm text-muted-foreground">
@@ -1636,8 +1647,8 @@ export default function BranchManagement() {
                             <div className="flex flex-wrap items-center gap-1.5 md:gap-2">
                               <h4 className="font-medium text-sm md:text-base truncate">{employee.name}</h4>
                               <Badge variant="outline" className="text-[10px] md:text-xs">{employee.position || "Karyawan"}</Badge>
-                              <Badge variant={employee.isActive ? "default" : "secondary"} className="text-[10px] md:text-xs">
-                                {employee.isActive ? "Aktif" : "Nonaktif"}
+                              <Badge variant={employee.status === 'active' ? "default" : "secondary"} className="text-[10px] md:text-xs">
+                                {employee.status === 'active' ? "Aktif" : "Nonaktif"}
                               </Badge>
                             </div>
                             <div className="text-xs md:text-sm text-muted-foreground space-y-1">
@@ -1698,8 +1709,8 @@ export default function BranchManagement() {
                                     : "Bulanan"}
                                 )
                               </h4>
-                              <Badge variant={target.isActive ? "default" : "secondary"} className="text-[10px] md:text-xs">
-                                {target.isActive ? "Aktif" : "Nonaktif"}
+                              <Badge variant={target.status === 'active' ? "default" : "secondary"} className="text-[10px] md:text-xs">
+                                {target.status === 'active' ? "Aktif" : "Nonaktif"}
                               </Badge>
                             </div>
                             <div className="space-y-1">
