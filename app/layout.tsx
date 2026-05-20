@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   
   // 🔑 Kode verifikasi Google Search Console ditambahkan di sini
   verification: {
-    google: '4oRTIgQQMaRiefHG76icRvGzdI1bZVCJNCzEhPayLdc',
+    google: 'CvwMxBhtFm5qhjmRoe7OvGvt0BkSOVNDZW3FE9TbzDg',
   },
 
   icons: {
