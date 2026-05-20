@@ -8,10 +8,10 @@ import "./globals.css"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: 'PIGTOWN BARBERSHOP',
+  title: 'PIGTOWN BARBERSHOP - Sistem Manajemen Barbershop',
   description: 'Sistem manajemen modern untuk Pigtown Barbershop',
   
-  // 🔑 Kode verifikasi Google Search Console ditambahkan di sini
+  // 🔑 Kode verifikasi Google Search Console
   verification: {
     google: 'CvwMxBhtFm5qhjmRoe7OvGvt0BkSOVNDZW3FE9TbzDg',
   },
