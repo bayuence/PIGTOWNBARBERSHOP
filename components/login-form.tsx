@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { supabase } from "@/lib/supabase"
+import { loginWithEmail, saveUserSession } from "@/lib/auth"
 import { toast } from "sonner"
 import { Eye, EyeOff, AlertCircle } from "lucide-react"
 import Link from "next/link"
@@ -26,27 +26,17 @@ export function LoginForm() {
     setIsLoading(true)
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { user, error } = await loginWithEmail({
         email: formData.email,
         password: formData.password,
       })
 
-      if (error) {
+      if (error || !user) {
         // Increment failed attempts
         setFailedAttempts(prev => prev + 1)
         
-        // Handle specific error messages
-        let errorMessage = error.message
-        
-        // Check for common error types
-        if (error.message.includes("Invalid login credentials")) {
-          errorMessage = "Email atau password salah. Silakan coba lagi."
-        } else if (error.message.includes("Email not confirmed")) {
-          errorMessage = "Email belum diverifikasi. Periksa inbox Anda."
-        }
-
         toast.error("Login Gagal", {
-          description: errorMessage,
+          description: error || "Email atau password salah",
           duration: 5000,
         })
         
@@ -64,59 +54,30 @@ export function LoginForm() {
         return
       }
 
-      if (data.user) {
-        // Reset failed attempts on success
-        setFailedAttempts(0)
-        
-        // Store user session from auth only
-        const userData = {
-          id: data.user.id,
-          email: data.user.email,
-          name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
-          position: data.user.user_metadata?.position || 'Owner',
-          loginTime: new Date().toISOString(),
-        }
+      // Reset failed attempts on success
+      setFailedAttempts(0)
+      
+      // Save user session
+      saveUserSession(user)
 
-        localStorage.setItem("user", JSON.stringify(userData))
+      toast.success("Login Berhasil", {
+        description: `Selamat datang, ${user.name}!`,
+      })
 
-        toast.success("Login Berhasil", {
-          description: `Selamat datang, ${userData.name}!`,
-        })
-
-        setTimeout(() => {
-          router.push("/dashboard")
-          setIsLoading(false)
-        }, 100)
-      }
+      setTimeout(() => {
+        router.push("/dashboard")
+        setIsLoading(false)
+      }, 100)
     } catch (error) {
       console.error("Login error:", error)
       
       // Increment failed attempts
       setFailedAttempts(prev => prev + 1)
       
-      // Handle network errors specifically
-      let errorMessage = "Terjadi kesalahan saat login"
-      
-      if (error instanceof TypeError && error.message === "Failed to fetch") {
-        errorMessage = "Tidak dapat terhubung ke server. Periksa koneksi internet Anda dan coba lagi."
-      } else if (error instanceof Error) {
-        errorMessage = error.message
-      }
-      
       toast.error("Koneksi Gagal", {
-        description: errorMessage,
+        description: "Terjadi kesalahan saat login. Silakan coba lagi.",
         duration: 5000,
       })
-      
-      // Show help message after 3 failed attempts
-      if (failedAttempts >= 2) {
-        setTimeout(() => {
-          toast.info("Butuh Bantuan?", {
-            description: "Jika Anda mengalami kendala terus-menerus, silakan hubungi @bayuence_ di Instagram untuk bantuan.",
-            duration: 8000,
-          })
-        }, 1000)
-      }
       
       setIsLoading(false)
     }

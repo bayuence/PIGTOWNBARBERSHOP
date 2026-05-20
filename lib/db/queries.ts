@@ -34,11 +34,11 @@ export async function getUserById(id: string) {
   });
 }
 
-export async function getUsersByBranch(branchId: string) {
+export async function getUsersByBranch(branchId: number) {
   return await db.query.users.findMany({
     where: and(
       eq(users.branchId, branchId),
-      eq(users.isActive, true)
+      eq(users.status, 'active')
     ),
     with: {
       branch: true,
@@ -46,12 +46,12 @@ export async function getUsersByBranch(branchId: string) {
   });
 }
 
-export async function getBarbersByBranch(branchId: string) {
+export async function getBarbersByBranch(branchId: number) {
   return await db.query.users.findMany({
     where: and(
       eq(users.branchId, branchId),
       eq(users.role, 'barber'),
-      eq(users.isActive, true)
+      eq(users.status, 'active')
     ),
   });
 }
