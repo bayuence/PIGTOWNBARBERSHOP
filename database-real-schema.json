@@ -1,0 +1,53 @@
+{
+  "users": {
+    "id": 1,
+    "email": "owner@pigtownbarbershop.com",
+    "password": "pemilik123",
+    "pin": "123456",
+    "role": "owner",
+    "created_at": "2025-08-13T15:35:49.788963+00:00",
+    "status": "active",
+    "phone": null,
+    "address": null,
+    "position": null,
+    "branch_id": null,
+    "name": "Owner"
+  },
+  "branches": {
+    "id": "35311060-97ab-4dcb-a9c6-11382d88e6f9",
+    "name": "Cabang Utama",
+    "address": "Jl. Raya Utama No. 123",
+    "phone": "021-12345678",
+    "status": "active",
+    "manager_id": null,
+    "operating_hours": {
+      "open": "09:00",
+      "close": "21:00"
+    },
+    "created_at": "2026-05-07T20:09:30.121984+00:00",
+    "updated_at": "2026-05-07T20:09:30.121984+00:00"
+  },
+  "services": {
+    "id": 1,
+    "name": "Potong Rambut Basic",
+    "description": "Potong rambut standar",
+    "price": 25000,
+    "duration": 30,
+    "aktif": true,
+    "category_id": null,
+    "commission_rate": 0,
+    "type": "service",
+    "stock": 0,
+    "status": "active",
+    "created_at": "2026-05-07T20:02:33.066667+00:00"
+  },
+  "transactions": null,
+  "transaction_items": null,
+  "attendance": null,
+  "kasbon": null,
+  "expenses": null,
+  "points": null,
+  "receipt_templates": null,
+  "profiles": null,
+  "customers": null
+}
