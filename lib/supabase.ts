@@ -169,6 +169,10 @@ export interface Kasbon {
   created_at: string
 }
 
+export interface KasbonWithUser extends Kasbon {
+  user?: User
+}
+
 export interface Expense {
   id: string
   branch_id?: string
@@ -221,13 +225,13 @@ export async function createTransaction(data: {
 }) {
   try {
     // Generate transaction number from database function if not provided
-    let transactionNumber = data.transaction_number
+    let transactionNumber: string = data.transaction_number || ''
     
     if (!transactionNumber) {
       const { data: result, error: seqError } = await supabase
         .rpc('get_next_transaction_number')
       
-      if (seqError) {
+      if (seqError || !result) {
         console.error('[createTransaction] Error getting transaction number:', seqError)
         // Fallback to timestamp-based number with Indonesian format if function fails
         const now = new Date()
@@ -237,7 +241,7 @@ export async function createTransaction(data: {
         const timestamp = Date.now().toString().slice(-4)
         transactionNumber = `TRX-${dd}${mm}${yyyy}-${timestamp}`
       } else {
-        transactionNumber = result
+        transactionNumber = result as string
       }
     }
     
@@ -890,27 +894,153 @@ export async function getKasbonRequests(branchId?: string) {
 }
 
 export async function createKasbonRequest(data: any) {
-  return { data: null, error: null }
+  try {
+    console.log('[createKasbonRequest] Data yang dikirim:', JSON.stringify(data, null, 2))
+    
+    const { data: kasbon, error } = await supabase
+      .from('kasbon')
+      .insert({
+        user_id: data.user_id,
+        amount: data.amount,
+        reason: data.reason,
+        status: 'pending',
+        request_date: new Date().toISOString(),
+        due_date: data.due_date,
+        notes: data.notes,
+      })
+      .select()
+      .single()
+    
+    if (error) {
+      console.error('[createKasbonRequest] Supabase error:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      })
+      throw error
+    }
+    
+    console.log('[createKasbonRequest] Berhasil:', kasbon)
+    return { data: kasbon, error: null }
+  } catch (error: any) {
+    console.error('[createKasbonRequest] Error:', {
+      message: error?.message,
+      name: error?.name,
+      full: error
+    })
+    return { data: null, error }
+  }
 }
 
 export function setupGlobalEventsListener(callback: any) {
-  return { unsubscribe: () => {} }
+  const channel = supabase
+    .channel('global-events')
+    .on('broadcast', { event: '*' }, (payload) => {
+      callback(payload.event, payload.payload)
+    })
+    .subscribe()
+  
+  return channel
 }
 
 export async function getAllExpensesWithDetails() {
-  return { data: [], error: null }
+  try {
+    const { data: expenses, error } = await supabase
+      .from('expenses')
+      .select(`
+        *,
+        branches:branch_id (
+          id,
+          name
+        )
+      `)
+      .order('created_at', { ascending: false })
+    
+    if (error) throw error
+    return { data: expenses || [], error: null }
+  } catch (error: any) {
+    console.error('[getAllExpensesWithDetails] Error:', error)
+    return { data: [], error }
+  }
 }
 
 export async function getExpenseStatisticsByBranch() {
-  return { data: null, error: null }
+  try {
+    const { data: expenses, error } = await supabase
+      .from('expenses')
+      .select('*')
+    
+    if (error) throw error
+    
+    const stats = {
+      total: expenses?.length || 0,
+      pending: expenses?.filter(e => e.status === 'pending').length || 0,
+      approved: expenses?.filter(e => e.status === 'approved').length || 0,
+      rejected: expenses?.filter(e => e.status === 'rejected').length || 0,
+      paid: expenses?.filter(e => e.status === 'paid').length || 0,
+      totalAmount: expenses?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0,
+      pendingAmount: expenses?.filter(e => e.status === 'pending').reduce((sum, e) => sum + (e.amount || 0), 0) || 0,
+      approvedAmount: expenses?.filter(e => e.status === 'approved').reduce((sum, e) => sum + (e.amount || 0), 0) || 0,
+      rejectedAmount: expenses?.filter(e => e.status === 'rejected').reduce((sum, e) => sum + (e.amount || 0), 0) || 0,
+      paidAmount: expenses?.filter(e => e.status === 'paid').reduce((sum, e) => sum + (e.amount || 0), 0) || 0,
+    }
+    
+    return stats
+  } catch (error: any) {
+    console.error('[getExpenseStatisticsByBranch] Error:', error)
+    return {
+      total: 0,
+      pending: 0,
+      approved: 0,
+      rejected: 0,
+      paid: 0,
+      totalAmount: 0,
+      pendingAmount: 0,
+      approvedAmount: 0,
+      rejectedAmount: 0,
+      paidAmount: 0,
+    }
+  }
 }
 
-export async function updateExpenseStatus(id: string, status: string) {
-  return { data: null, error: null }
+export async function updateExpenseStatus(id: string, status: string, rejectionReason?: string) {
+  try {
+    const updateData: any = {
+      status,
+      updated_at: new Date().toISOString()
+    }
+    
+    if (status === 'rejected' && rejectionReason) {
+      updateData.rejection_reason = rejectionReason
+    }
+    
+    if (status === 'approved') {
+      updateData.approved_at = new Date().toISOString()
+    }
+    
+    const { data, error } = await supabase
+      .from('expenses')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single()
+    
+    if (error) throw error
+    return { data, error: null }
+  } catch (error: any) {
+    console.error('[updateExpenseStatus] Error:', error)
+    return { data: null, error }
+  }
 }
 
 export function broadcastTransactionEvent(event: string, data: any) {
-  // Placeholder
+  const channel = supabase.channel('global-events')
+  channel.send({
+    type: 'broadcast',
+    event: event,
+    payload: data
+  })
 }
 
 export async function deleteExpenseRequest(id: string) {

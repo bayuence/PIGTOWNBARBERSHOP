@@ -59,7 +59,7 @@ interface EditTransactionData {
   payment_method: string
   payment_status: string
   notes: string
-  discount_amount: number
+  discount: number
   discount_type: "percentage" | "fixed"
   discount_value: string
   discount_reason: string
@@ -78,7 +78,7 @@ export function TransactionHistory() {
   const [filterStatus, setFilterStatus] = useState("all")
 
   // Filter waktu yang fleksibel
-  const [dateFilter, setDateFilter] = useState("today")
+  const [dateFilter, setDateFilter] = useState("this_month")
   const [customStartDate, setCustomStartDate] = useState(new Date().toISOString().split("T")[0])
   const [customEndDate, setCustomEndDate] = useState(new Date().toISOString().split("T")[0])
 
@@ -94,7 +94,7 @@ export function TransactionHistory() {
     payment_method: "cash",
     payment_status: "completed",
     notes: "",
-    discount_amount: 0,
+    discount: 0,
     discount_type: "percentage",
     discount_value: "",
     discount_reason: "",

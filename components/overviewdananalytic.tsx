@@ -218,6 +218,7 @@ export function OverviewAndAnalytics({ onRefreshData, realTimeEnabled }: Overvie
         const netProfit = branchRevenue - branchExpenses
         
         return {
+          id: branch.id, // ✅ Tambahkan id untuk key prop
           name: branch.name,
           revenue: branchRevenue,
           expense: branchExpenses,
@@ -456,9 +457,9 @@ export function OverviewAndAnalytics({ onRefreshData, realTimeEnabled }: Overvie
           }
         })
 
-        const totalWorkHours = Math.floor(totalSeconds / 3600)
-        const totalWorkMinutes = Math.floor((totalSeconds % 3600) / 60)
-        const totalWorkSeconds = totalSeconds % 60
+        const totalWorkHours = Math.floor(totalSeconds / 3600) || 0
+        const totalWorkMinutes = Math.floor((totalSeconds % 3600) / 60) || 0
+        const totalWorkSeconds = (totalSeconds % 60) || 0
 
         // Debug log untuk employee dengan transaksi atau kehadiran
         if (totalTransactions > 0 || totalRevenue > 0 || totalCommission > 0 || pendingCommission > 0 || attendanceDays > 0) {
@@ -1203,15 +1204,15 @@ export function OverviewAndAnalytics({ onRefreshData, realTimeEnabled }: Overvie
                                       <div className="bg-slate-50 dark:bg-slate-800/50 px-2 py-1 rounded">
                                         <div className="flex items-center justify-center gap-1 text-xs font-mono">
                                           <span className="font-semibold text-slate-700 dark:text-slate-300">
-                                            {emp.totalWorkHours}
+                                            {emp.totalWorkHours || 0}
                                           </span>
                                           <span className="text-slate-500 text-[10px]">jam</span>
                                           <span className="font-semibold text-slate-700 dark:text-slate-300">
-                                            {emp.totalWorkMinutes}
+                                            {emp.totalWorkMinutes || 0}
                                           </span>
                                           <span className="text-slate-500 text-[10px]">menit</span>
                                           <span className="font-semibold text-slate-700 dark:text-slate-300">
-                                            {emp.totalWorkSeconds}
+                                            {emp.totalWorkSeconds || 0}
                                           </span>
                                           <span className="text-slate-500 text-[10px]">detik</span>
                                         </div>

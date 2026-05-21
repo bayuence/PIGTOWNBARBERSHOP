@@ -195,7 +195,7 @@ export const receiptTemplates = pgTable('receipt_templates', {
   branchId: uuid('branch_id'),
   name: text('name').notNull(),
   template: jsonb('template').notNull(),
-  isActive: boolean('is_active').notNull().default(true),
+  isActive: boolean('is_active').notNull().default(true), // ✅ This is correct - database column is 'is_active'
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });

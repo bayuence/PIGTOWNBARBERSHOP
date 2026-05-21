@@ -219,7 +219,7 @@ export function ComprehensiveReports() {
       // Get total revenue and transactions
       let transactionQuery = supabase
         .from("transactions")
-        .select("total_amount, created_at, branch_id")
+        .select("total, created_at, branch_id")
         .eq("payment_status", "completed")
         .gte("created_at", start)
         .lte("created_at", end)
@@ -295,7 +295,7 @@ export function ComprehensiveReports() {
 
       let revenueQuery = supabase
         .from("transactions")
-        .select("total_amount, created_at, branch_id")
+        .select("total, created_at, branch_id")
         .eq("payment_status", "completed")
         .gte("created_at", start)
         .lte("created_at", end)
@@ -365,7 +365,7 @@ export function ComprehensiveReports() {
           // Get transactions for this branch with date filter
           const { data: transactions } = await supabase
             .from("transactions")
-            .select("total_amount, created_at")
+            .select("total, created_at")
             .eq("branch_id", branch.id)
             .eq("payment_status", "completed")
             .gte("created_at", start)
@@ -519,7 +519,7 @@ export function ComprehensiveReports() {
           // Get transactions handled by this employee (as cashier) with date filter
           const { data: transactions } = await supabase
             .from("transactions")
-            .select("total_amount, created_at")
+            .select("total, created_at")
             .eq("cashier_id", user.id)
             .eq("payment_status", "completed")
             .gte("created_at", start)
@@ -817,7 +817,7 @@ export function ComprehensiveReports() {
           // 1. Get transactions (revenue & payment methods)
           const { data: transactions } = await supabase
             .from("transactions")
-            .select("total_amount, payment_method, created_at")
+            .select("total, payment_method, created_at")
             .eq("branch_id", branch.id)
             .eq("payment_status", "completed")
             .gte("created_at", start)

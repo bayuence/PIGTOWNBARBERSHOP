@@ -1,6 +1,6 @@
-// Authentication helpers
+// Authentication helpers using Supabase
 import bcrypt from 'bcryptjs';
-import { supabase } from './supabase';
+import { getUserByEmail, supabase } from './supabase';
 
 export interface LoginCredentials {
   email: string;
@@ -8,12 +8,12 @@ export interface LoginCredentials {
 }
 
 export interface User {
-  id: number;
+  id: string;
   email: string;
   name: string;
   role: string;
   status: string;
-  branchId: number | null;
+  branchId: string | null;
   phone: string | null;
   address: string | null;
   position: string | null;
@@ -22,12 +22,8 @@ export interface User {
 
 export async function loginWithEmail(credentials: LoginCredentials): Promise<{ user: User | null; error: string | null }> {
   try {
-    // Query user from database
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('email', credentials.email)
-      .single();
+    // Query user from database using Supabase
+    const { data, error } = await getUserByEmail(credentials.email);
 
     if (error || !data) {
       return {
@@ -45,7 +41,7 @@ export async function loginWithEmail(credentials: LoginCredentials): Promise<{ u
     }
 
     // Verify password with bcrypt
-    const isPasswordValid = await bcrypt.compare(credentials.password, data.password);
+    const isPasswordValid = await bcrypt.compare(credentials.password, data.password || '');
 
     if (!isPasswordValid) {
       return {
@@ -57,15 +53,15 @@ export async function loginWithEmail(credentials: LoginCredentials): Promise<{ u
     // Return user data (without password)
     const user: User = {
       id: data.id,
-      email: data.email,
+      email: data.email || '',
       name: data.name,
-      role: data.role,
-      status: data.status,
-      branchId: data.branch_id,
-      phone: data.phone,
-      address: data.address,
-      position: data.position,
-      pin: data.pin,
+      role: data.role || '',
+      status: data.status || 'active',
+      branchId: data.branch_id || null,
+      phone: data.phone || null,
+      address: data.address || null,
+      position: data.position || null,
+      pin: data.pin || null,
     };
 
     return {
@@ -81,19 +77,20 @@ export async function loginWithEmail(credentials: LoginCredentials): Promise<{ u
   }
 }
 
-export async function loginWithPin(pin: string, branchId?: number): Promise<{ user: User | null; error: string | null }> {
+export async function loginWithPin(pin: string, branchId?: string): Promise<{ user: User | null; error: string | null }> {
   try {
+    // Query user from database using Supabase
     let query = supabase
       .from('users')
       .select('*')
       .eq('pin', pin)
-      .eq('status', 'active');
+      .eq('status', 'active')
 
     if (branchId) {
-      query = query.eq('branch_id', branchId);
+      query = query.eq('branch_id', branchId)
     }
 
-    const { data, error } = await query.single();
+    const { data, error } = await query.single()
 
     if (error || !data) {
       return {
@@ -104,15 +101,15 @@ export async function loginWithPin(pin: string, branchId?: number): Promise<{ us
 
     const user: User = {
       id: data.id,
-      email: data.email,
+      email: data.email || '',
       name: data.name,
-      role: data.role,
-      status: data.status,
-      branchId: data.branch_id,
-      phone: data.phone,
-      address: data.address,
-      position: data.position,
-      pin: data.pin,
+      role: data.role || '',
+      status: data.status || 'active',
+      branchId: data.branch_id || null,
+      phone: data.phone || null,
+      address: data.address || null,
+      position: data.position || null,
+      pin: data.pin || null,
     };
 
     return {

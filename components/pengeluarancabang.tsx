@@ -253,7 +253,12 @@ export function PengeluaranCabang() {
   }
 
   const handleAddExpense = async () => {
+    // Prevent double submission
+    if (isLoading) return
+    
     try {
+      setIsLoading(true)
+      
       const expenseData = {
         ...newExpense,
         amount: Number.parseInt(unformatInputNumber(newExpense.amount)),
@@ -274,6 +279,8 @@ export function PengeluaranCabang() {
       }
     } catch (error) {
       console.error("Error creating expense:", error)
+    } finally {
+      setIsLoading(false)
     }
   }
 

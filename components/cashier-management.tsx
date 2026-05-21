@@ -302,12 +302,8 @@ export function CashierManagement() {
       let query = supabase
         .from("service_categories")
         .select("*")
-        .order("sort_order", { ascending: true })
-      
-      // Filter by type based on filterType
-      if (filterType === "service" || filterType === "product") {
-        query = query.eq("type", filterType)
-      }
+        .eq("is_active", true)
+        .order("name", { ascending: true })
 
       const { data, error } = await query
 
@@ -334,8 +330,9 @@ export function CashierManagement() {
         .from("services")
         .select(`
           *,
-          category:service_categories(name, icon, type)
+          service_categories(id, name, description)
         `)
+        .eq("aktif", true)
         .order("created_at", { ascending: false })
       
       // Filter by type based on filterType

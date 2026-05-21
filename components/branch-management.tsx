@@ -68,15 +68,6 @@ interface Shift {
     duration: number
   }>
 }
-  minStaff: number
-  hasBreakTime?: boolean
-  breakTimes?: Array<{
-    id: string
-    start: string
-    end: string
-    duration: number
-  }>
-}
 
 interface NewShift {
   name: string
@@ -91,8 +82,6 @@ interface NewShift {
     duration: number
   }>
   status?: string  // Changed from isActive to status
-}>
-  isActive?: boolean
 }
 
 interface Employee {
@@ -252,7 +241,7 @@ export default function BranchManagement() {
       const { data: branchesData, error: branchError } = await supabase
         .from("branches")
         .select(
-          "id, name, address, phone, status, manager_id, manager_name, operating_hours, shifts, settings, created_at",
+          "id, name, address, phone, status, manager_id, operating_hours, created_at",
         )
 
       if (branchError) {
@@ -261,16 +250,10 @@ export default function BranchManagement() {
         return
       }
 
-      console.log("[v0] Raw branches data with shifts:", branchesData)
-      branchesData.forEach((branch) => {
-        console.log(`[v0] Branch ${branch.name}: manager_id=${branch.manager_id}, manager_name=${branch.manager_name}`)
-      })
-
-      console.log("[v0] Raw branches data with shifts:", branchesData)
+      console.log("[v0] Raw branches data:", branchesData)
 
       const enrichedBranchesData = await Promise.all(
         branchesData.map(async (branch) => {
-          // Get employee count
           // Get employee count with error handling
           let employeeCount = 0;
           try {
@@ -287,7 +270,51 @@ export default function BranchManagement() {
           } catch (error) {
             console.warn(`[v0] Exception counting users for branch ${branch.name}:`, error);
           }
-          // Get revenue from transactions
+          
+          // Get manager name if manager_id exists
+          let managerName = "Belum ada manager";
+          if (branch.manager_id) {
+            try {
+              const { data: managerData, error: managerError } = await supabase
+                .from("users")
+                .select("name")
+                .eq("id", branch.manager_id)
+                .single();
+              
+              if (!managerError && managerData) {
+                managerName = managerData.name;
+              }
+            } catch (error) {
+              console.warn(`[v0] Error fetching manager for branch ${branch.name}:`, error);
+            }
+          }
+          
+          // Get shifts from branch_shifts table
+          let shifts: any[] = [];
+          try {
+            const { data: shiftsData, error: shiftsError } = await supabase
+              .from("branch_shifts")
+              .select("*")
+              .eq("branch_id", branch.id);
+            
+            if (!shiftsError && shiftsData) {
+              shifts = shiftsData.map((shift: any) => ({
+                id: shift.id,
+                name: shift.name,
+                startTime: shift.start_time,
+                endTime: shift.end_time,
+                days: shift.days || [],
+                currentEmployees: shift.current_employees || 0,
+                isActive: shift.status === 'active',
+                breakTimes: shift.break_times || [],
+                minStaff: shift.min_staff || 1,
+                hasBreakTime: shift.has_break_time || false,
+              }));
+            }
+          } catch (error) {
+            console.warn(`[v0] Error fetching shifts for branch ${branch.name}:`, error);
+          }
+          
           // Get revenue from transactions with error handling
           let transactions = null;
           try {
@@ -307,25 +334,6 @@ export default function BranchManagement() {
             console.warn(`[v0] Exception fetching transactions for branch ${branch.name}:`, error);
             transactions = [];
           }
-          const shifts = Array.isArray(branch.shifts)
-            ? branch.shifts.map((shift: any) => ({
-              id: shift.id || crypto.randomUUID(),
-              name: shift.name,
-              startTime: shift.start_time || shift.startTime,
-              endTime: shift.end_time || shift.endTime,
-              days: shift.days || [],
-              currentEmployees: shift.current_employees || shift.currentEmployees || 0,
-              isActive:
-                shift.status !== undefined
-                  ? shift.status
-                  : shift.status === 'active' !== undefined
-                    ? shift.status === 'active'
-                    : true,
-              breakTimes: shift.break_times || shift.breakTimes || [],
-              minStaff: shift.min_staff || shift.minStaff || 1,
-              hasBreakTime: shift.has_break_time !== undefined ? shift.has_break_time : shift.hasBreakTime || false,
-            }))
-            : []
 
           const revenue = transactions?.reduce((sum, t) => sum + (t.total_amount || 0), 0) || 0
           const customerCount = transactions?.length || 0
@@ -335,7 +343,7 @@ export default function BranchManagement() {
             name: branch.name,
             address: branch.address || "",
             phone: branch.phone || "",
-            manager: branch.manager_name || branch.manager || "Belum ada manager",
+            manager: managerName,
             employees: employeeCount || 0,
             status: branch.status as "active" | "inactive" | "maintenance",
             revenue: `Rp ${revenue.toLocaleString("id-ID")}`,
@@ -343,11 +351,11 @@ export default function BranchManagement() {
             rating: 4.5, // You can add rating calculation
             openTime: branch.operating_hours?.open || "09:00",
             closeTime: branch.operating_hours?.close || "21:00",
-            services: [], // You can add shifts table later
-            shifts, // Use shifts data from JSONB column
+            services: [], // You can add services later
+            shifts, // Use shifts data from branch_shifts table
             branchEmployees: [],
             targets: [],
-            settings: branch.settings || {
+            settings: {
               autoAcceptBookings: true,
               allowWalkIns: true,
               requireDeposit: false,
@@ -1041,7 +1049,7 @@ export default function BranchManagement() {
         // Calculate revenue (you can modify this logic based on your needs)
         const { data: transactions } = await supabase
           .from("transactions")
-          .select("total_amount")
+          .select("total")
           .eq("branch_id", branch.id)
 
         const revenue = transactions?.reduce((sum, t) => sum + (t.total_amount || 0), 0) || 0

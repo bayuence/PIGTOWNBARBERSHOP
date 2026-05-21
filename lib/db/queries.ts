@@ -62,7 +62,7 @@ export async function getBarbersByBranch(branchId: number) {
 
 export async function getAllBranches() {
   return await db.query.branches.findMany({
-    where: eq(branches.isActive, true),
+    where: eq(branches.status, 'active'), // ✅ Fixed: branches use 'status' column
   });
 }
 
@@ -78,7 +78,7 @@ export async function getBranchById(id: string) {
 
 export async function getAllServices() {
   return await db.query.services.findMany({
-    where: eq(services.isActive, true),
+    where: eq(services.aktif, true), // ✅ Fixed: services use 'aktif' column (boolean)
     orderBy: [services.name],
   });
 }
@@ -87,7 +87,7 @@ export async function getServicesByType(type: 'service' | 'product') {
   return await db.query.services.findMany({
     where: and(
       eq(services.type, type),
-      eq(services.isActive, true)
+      eq(services.aktif, true) // ✅ Fixed: services use 'aktif' column
     ),
   });
 }
@@ -98,7 +98,7 @@ export async function getLowStockProducts() {
     .where(
       and(
         eq(services.type, 'product'),
-        eq(services.isActive, true),
+        eq(services.aktif, true), // ✅ Fixed: services use 'aktif' column
         sql`${services.stock} <= ${services.minStock}`
       )
     );

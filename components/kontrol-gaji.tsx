@@ -152,8 +152,7 @@ export function KontrolGaji() {
       const { data: users, error: usersError } = await supabase
         .from('users')
         .select(`
-          id, name, email, position, salary, branch_id, phone, status, created_at,
-          branches:branch_id (id, name)
+          id, name, email, position, salary, branch_id, phone, status, created_at
         `)
         .order('name')
         .eq('status', 'active');
@@ -168,6 +167,24 @@ export function KontrolGaji() {
       } else {
         console.log(`✅ Loaded ${users.length} active users`);
       }
+      
+      // Fetch branches separately
+      const { data: branches, error: branchesError } = await supabase
+        .from('branches')
+        .select('id, name');
+      
+      if (branchesError) {
+        console.error('❌ Branches error:', branchesError);
+      }
+      
+      // Create branch map for quick lookup
+      const branchMap = new Map(branches?.map(b => [b.id, b]) || []);
+      
+      // Enrich users with branch data
+      const usersWithBranches = users?.map(user => ({
+        ...user,
+        branches: user.branch_id ? branchMap.get(user.branch_id) : null
+      })) || [];
 
       const { data: commissionRules, error: commissionError } = await supabase
         .from('commission_rules')
@@ -195,18 +212,9 @@ export function KontrolGaji() {
         console.error('❌ Summary error:', summaryError);
         throw summaryError;
       }
-
-      const { data: branchesData, error: branchesError } = await supabase
-        .from('branches')
-        .select('id, name')
-        .eq('status', 'active');
       
-      if (branchesError) {
-        console.error('❌ Branches error:', branchesError);
-        throw branchesError;
-      }
-      
-      setBranches(branchesData || []);
+      // Use branches data that was already fetched above
+      setBranches(branches || []);
       
       const commissionStats: EarnedCommissionStats = {};
       if (summaryData) {
@@ -218,7 +226,7 @@ export function KontrolGaji() {
       
       const servicesMap = new Map(allServices?.map(s => [s.id, { name: s.name, price: s.price }]));
 
-      const processedEmployees: Employee[] = (users || []).map(user => {
+      const processedEmployees: Employee[] = (usersWithBranches || []).map(user => {
         const userCommissions = commissionRules
           ?.filter(c => c.user_id === user.id)
           .map(c => {
@@ -235,7 +243,6 @@ export function KontrolGaji() {
           name: user.name,
           email: user.email,
           position: user.position || 'Karyawan',
-          position: user.position,
           baseSalary: user.salary,
           commissions: userCommissions,
           branch: user.branches?.name || 'Tidak Ada Cabang',
