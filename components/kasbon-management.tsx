@@ -98,14 +98,25 @@ export default function KasbonManagement() {
       if (usersError) throw usersError
       setUsers(usersData || [])
 
-      // Fetch kasbon requests (using snapshot columns: user_name, approved_by_name)
+      // Fetch kasbon requests
       const { data: kasbonData, error: kasbonError } = await supabase
         .from("kasbon")
         .select("*")
         .order("created_at", { ascending: false })
 
       if (kasbonError) throw kasbonError
-      setKasbonRequests(kasbonData || [])
+      
+      // Create user map for quick lookup
+      const userMap = new Map(usersData?.map(u => [u.id, u]) || [])
+      
+      // Combine kasbon with user data
+      const kasbonWithUsers = (kasbonData || []).map(kasbon => ({
+        ...kasbon,
+        user: userMap.get(kasbon.user_id) || null,
+        approver: kasbon.approved_by ? userMap.get(kasbon.approved_by) : null
+      }))
+      
+      setKasbonRequests(kasbonWithUsers)
     } catch (error) {
       console.error("Error fetching data:", error)
       if (showLoading) {

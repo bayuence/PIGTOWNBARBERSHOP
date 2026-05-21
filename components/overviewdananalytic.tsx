@@ -181,7 +181,7 @@ export function OverviewAndAnalytics({ onRefreshData, realTimeEnabled }: Overvie
       console.log('✅ Data loaded - Transactions:', transactions.length, '| Users:', users.length, '| Branches:', branches.length)
 
       const getTransactionAmount = (transaction: any) => {
-        return transaction.final_amount || transaction.total_amount || transaction.subtotal || 0
+        return transaction.total_amount || transaction.subtotal || 0
       }
 
       const isCompletedTransaction = (transaction: any) => {
@@ -393,7 +393,7 @@ export function OverviewAndAnalytics({ onRefreshData, realTimeEnabled }: Overvie
         
         // Calculate total revenue from employee's transactions
         const totalRevenue = empTransactions.reduce((sum, t) => {
-          const amount = t.final_amount || t.total_amount || t.subtotal || 0
+          const amount = t.total_amount || t.total_amount || t.subtotal || 0
           return sum + amount
         }, 0)
 
@@ -857,7 +857,7 @@ export function OverviewAndAnalytics({ onRefreshData, realTimeEnabled }: Overvie
                         
                         return (
                           <tr 
-                            key={branch.name}
+                            key={branch.id}
                             className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                           >
                             <td className="p-3">

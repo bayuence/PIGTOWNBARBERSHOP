@@ -90,38 +90,80 @@ interface BranchShift {
 
 async function getBranchShifts(branchId: string): Promise<{ data: BranchShift[] | null; error: any }> {
   try {
-    const { data: branchData, error } = await supabase
-      .from("branches")
-      .select("shifts, operating_hours")
-      .eq("id", branchId)
-      .single()
+    // Query branch_shifts table instead of branches.shifts
+    const { data: shiftsData, error } = await supabase
+      .from("branch_shifts")
+      .select("*")
+      .eq("branch_id", branchId)
+      .eq("is_active", true)
+      .order("start_time")
 
     if (error) {
-      console.error("Error fetching branch data:", error)
-      return { data: null, error }
+      console.error("Error fetching branch shifts:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      })
+      
+      // Return default shift on error
+      return { 
+        data: [
+          {
+            id: "1",
+            name: "Shift Reguler",
+            start_time: "09:00",
+            end_time: "21:00",
+            type: "reguler",
+          },
+        ], 
+        error: null 
+      }
     }
 
-    let shifts: BranchShift[] = []
+    // Map database shifts to BranchShift interface
+    const shifts: BranchShift[] = shiftsData?.map((shift: any) => ({
+      id: shift.id,
+      name: shift.shift_name,
+      start_time: shift.start_time,
+      end_time: shift.end_time,
+      type: shift.shift_type,
+      startTime: shift.start_time, // Add alias for compatibility
+      endTime: shift.end_time, // Add alias for compatibility
+    })) || []
 
-    if (branchData?.shifts && Array.isArray(branchData.shifts) && branchData.shifts.length > 0) {
-      shifts = branchData.shifts
-    } else if (branchData?.operating_hours) {
-      const { open, close } = branchData.operating_hours
-      shifts = [
-        {
-          id: "1",
-          name: "Shift Pagi",
-          start_time: open || "09:00",
-          end_time: close || "21:00",
-          type: "pagi",
-        },
-      ]
+    // If no shifts found, return default
+    if (shifts.length === 0) {
+      return { 
+        data: [
+          {
+            id: "1",
+            name: "Shift Reguler",
+            start_time: "09:00",
+            end_time: "21:00",
+            type: "reguler",
+          },
+        ], 
+        error: null 
+      }
     }
 
     return { data: shifts, error: null }
   } catch (error) {
     console.error("Error in getBranchShifts:", error)
-    return { data: null, error }
+    // Return default shift on error
+    return { 
+      data: [
+        {
+          id: "1",
+          name: "Shift Reguler",
+          start_time: "09:00",
+          end_time: "21:00",
+          type: "reguler",
+        },
+      ], 
+      error: null 
+    }
   }
 }
 
@@ -220,13 +262,14 @@ export function AttendanceSystem() {
 
       if (usersData && usersData.length > 0) {
         const employeeList = usersData.map((user: any) => ({
-          id: user.id,
+          id: String(user.id), // Convert to string for consistency
           name: user.name,
           position: user.position || "Karyawan",
           branch: branchNameMap.get(user.branch_id) || "Unknown Branch",
           branchId: user.branch_id,
           avatar: user.avatar,
         }))
+        console.log('[loadEmployeesAndBranches] Loaded employees:', employeeList.map(e => ({ id: e.id, name: e.name, idType: typeof e.id })))
         setEmployees(employeeList)
       } else {
         setEmployees([
@@ -277,37 +320,61 @@ export function AttendanceSystem() {
 
   const fetchAttendanceRecords = useCallback(async () => {
     try {
+      console.log('[fetchAttendanceRecords] Fetching for date:', selectedDate)
+      
       const { data, error } = await supabase
         .from("attendance")
-        .select(`
-        *,
-        branches:branch_id (
-          id,
-          name,
-          shifts
-        )
-      `)
+        .select("*")
         .eq("date", selectedDate)
 
       if (error) {
-        console.error("Error fetching attendance:", error)
+        console.error("[fetchAttendanceRecords] Error details:", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+        })
+        
+        toast({
+          title: "Error Memuat Presensi",
+          description: `${error.message || 'Terjadi kesalahan saat memuat data presensi'}`,
+          variant: "destructive",
+        })
         return
       }
+      
+      console.log('[fetchAttendanceRecords] Data loaded:', data?.length || 0, 'records')
+      console.log('[fetchAttendanceRecords] Raw data:', data)
 
       setAttendanceRecords(data || [])
 
       const employeeAttendanceMap = new Map()
 
       data?.forEach((record: any) => {
-        const empId = record.user_id
+        const empId = String(record.user_id) // Convert INTEGER to string for comparison
+        console.log('[fetchAttendanceRecords] Processing record:', {
+          user_id: record.user_id,
+          empId: empId,
+          status: record.status,
+          check_out_time: record.check_out_time
+        })
         if (!employeeAttendanceMap.has(empId)) {
           employeeAttendanceMap.set(empId, [])
         }
         employeeAttendanceMap.get(empId).push(record)
       })
 
+      console.log('[fetchAttendanceRecords] Employee map keys:', Array.from(employeeAttendanceMap.keys()))
+      console.log('[fetchAttendanceRecords] Employees IDs:', employees.map(e => e.id))
+
       const summaries = employees.map((emp) => {
-        const employeeAttendance = employeeAttendanceMap.get(emp.id) || []
+        const employeeAttendance = employeeAttendanceMap.get(String(emp.id)) || []
+        console.log(`[fetchAttendanceRecords] Employee ${emp.name} (ID: ${emp.id}, type: ${typeof emp.id}):`, {
+          attendanceCount: employeeAttendance.length,
+          attendance: employeeAttendance,
+          mapHasKey: employeeAttendanceMap.has(String(emp.id))
+        })
 
         const shifts: AttendanceRecord[] = employeeAttendance.map((attendanceData: any) => {
           let status: "present" | "absent" | "late" | "on-break" | "checked-out" = "absent"
@@ -324,42 +391,43 @@ export function AttendanceSystem() {
 
           let totalWorkingHours = 0
           if (attendanceData.check_in_time && attendanceData.check_out_time) {
-            const checkIn = new Date(attendanceData.check_in_time)
-            const checkOut = new Date(attendanceData.check_out_time)
+            // Parse time properly: combine date + time
+            const checkIn = new Date(`${attendanceData.date}T${attendanceData.check_in_time}`)
+            const checkOut = new Date(`${attendanceData.date}T${attendanceData.check_out_time}`)
             const workMinutes = (checkOut.getTime() - checkIn.getTime()) / (1000 * 60)
-            const breakMinutes = attendanceData.total_break_minutes || 0
+            const breakMinutes = attendanceData.break_duration || 0
             totalWorkingHours = Math.max(0, (workMinutes - breakMinutes) / 60)
           } else if (attendanceData.check_in_time && !attendanceData.check_out_time) {
-            const checkIn = new Date(attendanceData.check_in_time)
+            // Still working - calculate from check-in to now
+            const checkIn = new Date(`${attendanceData.date}T${attendanceData.check_in_time}`)
             const now = new Date()
             const workMinutes = (now.getTime() - checkIn.getTime()) / (1000 * 60)
-            const breakMinutes = attendanceData.total_break_minutes || 0
+            const breakMinutes = attendanceData.break_duration || 0
             totalWorkingHours = Math.max(0, (workMinutes - breakMinutes) / 60)
           }
 
-          let totalBreakMinutes = attendanceData.total_break_minutes || 0
+          let totalBreakMinutes = attendanceData.break_duration || 0
           if (attendanceData.break_start_time && attendanceData.break_end_time) {
-            const breakStart = new Date(attendanceData.break_start_time)
-            const breakEnd = new Date(attendanceData.break_end_time)
+            const breakStart = new Date(`${attendanceData.date}T${attendanceData.break_start_time}`)
+            const breakEnd = new Date(`${attendanceData.date}T${attendanceData.break_end_time}`)
             const calculatedBreakMinutes = (breakEnd.getTime() - breakStart.getTime()) / (1000 * 60)
             totalBreakMinutes = Math.max(totalBreakMinutes, calculatedBreakMinutes)
+          } else if (attendanceData.break_start_time && !attendanceData.break_end_time) {
+            // Currently on break - calculate break time so far
+            const breakStart = new Date(`${attendanceData.date}T${attendanceData.break_start_time}`)
+            const now = new Date()
+            const calculatedBreakMinutes = (now.getTime() - breakStart.getTime()) / (1000 * 60)
+            totalBreakMinutes = calculatedBreakMinutes
           }
 
           let shiftName = attendanceData.shift_type || "Unknown"
-          if (attendanceData.branches?.shifts && Array.isArray(attendanceData.branches.shifts)) {
-            const matchingShift = attendanceData.branches.shifts.find(
-              (shift: any) => shift.type === attendanceData.shift_type,
-            )
-            if (matchingShift) {
-              shiftName = matchingShift.name || matchingShift.type
-            }
-          }
+          // Removed branches.shifts lookup since we're not joining branches anymore
 
           return {
             id: attendanceData.id,
             employeeId: emp.id,
             employeeName: emp.name,
-            branch: attendanceData.branches?.name || emp.branch,
+            branch: emp.branch, // Use employee's branch instead
             branchId: attendanceData.branch_id,
             date: selectedDate,
             shift: shiftName,
@@ -371,7 +439,7 @@ export function AttendanceSystem() {
             totalWorkingHours: totalWorkingHours,
             status,
             photo: attendanceData.check_in_photo || attendanceData.check_out_photo,
-            location: attendanceData.branches?.name || emp.branch,
+            location: emp.branch, // Use employee's branch instead
           }
         })
 
@@ -387,6 +455,19 @@ export function AttendanceSystem() {
 
         const canCheckIn = !mostRecentActiveShift
 
+        console.log(`[fetchAttendanceRecords] Employee ${emp.name} summary:`, {
+          shiftsCount: shifts.length,
+          activeShiftsCount: activeShifts.length,
+          mostRecentActiveShift: mostRecentActiveShift ? {
+            id: mostRecentActiveShift.id,
+            status: mostRecentActiveShift.status,
+            checkIn: mostRecentActiveShift.checkIn,
+            checkOut: mostRecentActiveShift.checkOut
+          } : null,
+          currentStatus,
+          canCheckIn
+        })
+
         return {
           employeeId: emp.id,
           employeeName: emp.name,
@@ -400,11 +481,18 @@ export function AttendanceSystem() {
       })
 
       setDailySummaries(summaries)
-    } catch (error) {
-      console.error("Error in fetchAttendanceRecords:", error)
+    } catch (error: any) {
+      console.error("[fetchAttendanceRecords] Caught error:", {
+        message: error?.message,
+        name: error?.name,
+        code: error?.code,
+        stack: error?.stack,
+        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+      })
+      
       toast({
         title: "Error",
-        description: "Gagal memuat data presensi",
+        description: `Gagal memuat data presensi: ${error?.message || 'Unknown error'}`,
         variant: "destructive",
       })
     }
@@ -631,21 +719,41 @@ export function AttendanceSystem() {
           throw new Error("Branch ID not found for selected branch: " + branchToUse + ". Please select a valid branch.")
         }
 
-        const currentTime = new Date().toISOString()
-        const currentDate = format(new Date(), "yyyy-MM-dd")
+        const now = new Date()
+        const currentTime = format(now, "HH:mm:ss") // Format as time only
+        const currentDate = format(now, "yyyy-MM-dd") // Format as date only
 
-        const { error } = await supabase.from("attendance").insert({
-          user_id: selectedEmployee.id,
+        console.log('[handleAttendanceAction] Check-in data:', {
+          user_id: parseInt(selectedEmployee.id),
           branch_id: branchId,
           date: currentDate,
           check_in_time: currentTime,
+          shift_type: selectedShift
+        })
+
+        const { data, error } = await supabase.from("attendance").insert({
+          user_id: parseInt(selectedEmployee.id),
+          branch_id: branchId,
+          date: currentDate,
+          check_in_time: currentTime,
+          shift_type: selectedShift,
           status: "checked_in",
           check_in_photo: photoUrl,
           total_hours: 0,
           break_duration: 0,
-        })
+        }).select()
 
-        if (error) throw error
+        if (error) {
+          console.error('[handleAttendanceAction] Insert error:', {
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            code: error.code
+          })
+          throw error
+        }
+
+        console.log('[handleAttendanceAction] Check-in success:', data)
 
         toast({
           title: "Check-in Berhasil",
@@ -665,7 +773,7 @@ export function AttendanceSystem() {
           const { data: dbRecords, error: fetchErr } = await supabase
             .from("attendance")
             .select("*")
-            .eq("user_id", selectedEmployee.id)
+            .eq("user_id", parseInt(selectedEmployee.id)) // Convert to INTEGER
             .eq("date", selectedDate)
             .is("check_out_time", null)
             .order("check_in_time", { ascending: false })
@@ -704,9 +812,12 @@ export function AttendanceSystem() {
           throw new Error("Tidak ada record check-in aktif untuk hari ini. Silakan check-in terlebih dahulu.")
         }
 
-        const checkOutTime = new Date().toISOString()
-        const checkInTime = new Date(existingRecord.checkIn || "")
-        const workDuration = (new Date(checkOutTime).getTime() - checkInTime.getTime()) / (1000 * 60 * 60)
+        const now = new Date()
+        const checkOutTime = format(now, "HH:mm:ss") // Format as time only
+        
+        // Parse check-in time properly
+        const checkInTime = existingRecord.checkIn ? new Date(`${selectedDate}T${existingRecord.checkIn}`) : new Date()
+        const workDuration = (now.getTime() - checkInTime.getTime()) / (1000 * 60 * 60)
         const breakDuration = existingRecord.totalBreakTime || 0
         const totalHours = Math.max(0, workDuration - breakDuration / 60)
 
@@ -718,7 +829,7 @@ export function AttendanceSystem() {
             status: "checked_out",
             total_hours: totalHours,
           })
-          .eq("user_id", selectedEmployee.id)
+          .eq("user_id", parseInt(selectedEmployee.id)) // Convert to INTEGER
           .eq("date", selectedDate)
           .is("check_out_time", null)
 
@@ -812,15 +923,34 @@ export function AttendanceSystem() {
     return true
   }
 
-  const openCheckInDialog = (employee: Employee) => {
+  const openCheckInDialog = async (employee: Employee) => {
     if (isProcessing) return
 
-    const summary = dailySummaries.find((s) => s.employeeId === employee.id)
+    // Refresh data presensi untuk memastikan data terbaru
+    await fetchAttendanceRecords()
 
-    if (!summary?.canCheckIn) {
+    // Cek langsung ke database untuk memastikan tidak ada shift aktif
+    const { data: activeShifts, error } = await supabase
+      .from("attendance")
+      .select("*")
+      .eq("user_id", parseInt(employee.id))
+      .eq("date", selectedDate)
+      .is("check_out_time", null)
+
+    if (error) {
+      console.error("Error checking active shifts:", error)
+      toast({
+        title: "Error",
+        description: "Gagal memeriksa status presensi",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (activeShifts && activeShifts.length > 0) {
       toast({
         title: "Tidak Bisa Check-in",
-        description: "Karyawan harus check-out dari shift sebelumnya terlebih dahulu",
+        description: `${employee.name} masih memiliki ${activeShifts.length} shift aktif yang belum check-out. Silakan check-out terlebih dahulu.`,
         variant: "destructive",
       })
       return
@@ -839,6 +969,64 @@ export function AttendanceSystem() {
         variant: "destructive",
       })
       return
+    }
+
+    // Validasi waktu check-in sesuai dengan jam shift
+    const now = new Date()
+    const currentHour = now.getHours()
+    const currentMinute = now.getMinutes()
+    const currentTimeInMinutes = currentHour * 60 + currentMinute
+
+    // Cari shift yang dipilih dari branchShifts
+    const selectedShiftData = branchShifts.find(
+      (shift) => shift.type === selectedShift || shift.id === selectedShift
+    )
+
+    if (selectedShiftData) {
+      // Parse start_time dan end_time (format: "HH:mm:ss" atau "HH:mm")
+      const parseTime = (timeStr: string): number => {
+        const parts = timeStr.split(":")
+        const hours = parseInt(parts[0], 10)
+        const minutes = parseInt(parts[1], 10)
+        return hours * 60 + minutes
+      }
+
+      const shiftStartMinutes = parseTime(selectedShiftData.start_time)
+      const shiftEndMinutes = parseTime(selectedShiftData.end_time)
+
+      // Toleransi 30 menit sebelum shift dimulai
+      const toleranceMinutes = 30
+      const allowedStartMinutes = shiftStartMinutes - toleranceMinutes
+
+      // Cek apakah waktu sekarang dalam range shift (dengan toleransi)
+      let isWithinShiftTime = false
+
+      if (shiftEndMinutes > shiftStartMinutes) {
+        // Shift normal (tidak melewati tengah malam)
+        // Contoh: 09:00 - 15:00
+        isWithinShiftTime =
+          currentTimeInMinutes >= allowedStartMinutes && currentTimeInMinutes < shiftEndMinutes
+      } else {
+        // Shift melewati tengah malam
+        // Contoh: 21:00 - 03:00 (next day)
+        isWithinShiftTime =
+          currentTimeInMinutes >= allowedStartMinutes || currentTimeInMinutes < shiftEndMinutes
+      }
+
+      if (!isWithinShiftTime) {
+        const formatTime = (minutes: number): string => {
+          const h = Math.floor(minutes / 60)
+          const m = minutes % 60
+          return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`
+        }
+
+        toast({
+          title: "Waktu Check-in Tidak Sesuai",
+          description: `Shift ${selectedShiftData.name} hanya bisa check-in mulai jam ${formatTime(allowedStartMinutes)} sampai ${selectedShiftData.end_time}. Waktu sekarang: ${currentHour.toString().padStart(2, "0")}:${currentMinute.toString().padStart(2, "0")}`,
+          variant: "destructive",
+        })
+        return
+      }
     }
 
     if (selectedEmployee) {
@@ -1109,16 +1297,8 @@ export function AttendanceSystem() {
                                       Shift {index + 1} - {shift.branch}
                                     </span>
                                     <div className="text-gray-600 mt-1">
-                                      {shift.checkIn &&
-                                        `Masuk: ${new Date(shift.checkIn).toLocaleTimeString("id-ID", {
-                                          hour: "2-digit",
-                                          minute: "2-digit",
-                                        })}`}
-                                      {shift.checkOut &&
-                                        ` • Pulang: ${new Date(shift.checkOut).toLocaleTimeString("id-ID", {
-                                          hour: "2-digit",
-                                          minute: "2-digit",
-                                        })}`}
+                                      {shift.checkIn && `Masuk: ${shift.checkIn}`}
+                                      {shift.checkOut && ` • Pulang: ${shift.checkOut}`}
                                     </div>
                                   </div>
                                   <div className="text-right">
@@ -1260,10 +1440,7 @@ export function AttendanceSystem() {
                             <p className="text-xs text-green-600 font-medium mb-1">Check In</p>
                             <p className="text-xs sm:text-sm font-bold text-green-800">
                               {summary.shifts.length > 0 && summary.shifts[0].checkIn
-                                ? new Date(summary.shifts[0].checkIn).toLocaleTimeString("id-ID", {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })
+                                ? summary.shifts[0].checkIn
                                 : "--:--"}
                             </p>
                           </div>
@@ -1271,13 +1448,7 @@ export function AttendanceSystem() {
                             <p className="text-xs text-red-600 font-medium mb-1">Check Out</p>
                             <p className="text-xs sm:text-sm font-bold text-red-800">
                               {summary.shifts.length > 0 && summary.shifts[summary.shifts.length - 1].checkOut
-                                ? new Date(summary.shifts[summary.shifts.length - 1].checkOut).toLocaleTimeString(
-                                    "id-ID",
-                                    {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    },
-                                  )
+                                ? summary.shifts[summary.shifts.length - 1].checkOut
                                 : "--:--"}
                             </p>
                           </div>
