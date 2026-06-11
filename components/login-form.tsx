@@ -66,7 +66,6 @@ export function LoginForm() {
 
       setTimeout(() => {
         router.push("/dashboard")
-        setIsLoading(false)
       }, 100)
     } catch (error) {
       console.error("Login error:", error)

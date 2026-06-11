@@ -31,16 +31,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         setTimeout(() => setIsLoaded(true), 100)
     }, [router])
 
+    // Check if current route is Owner Dashboard
+    const isOwnerRoute = pathname === "/owner"
+
     if (!user) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-red-900 to-black flex items-center justify-center">
-                <div className="w-10 h-10 border-3 border-red-400/50 border-t-red-400 rounded-full animate-spin" />
+            <div className={`min-h-screen ${isOwnerRoute ? '' : 'bg-gradient-to-br from-red-50 to-white'}`}>
+                <div className="min-h-screen flex items-center justify-center bg-black/5">
+                    <div className="w-10 h-10 border-4 border-red-200 border-t-red-600 rounded-full animate-spin" />
+                </div>
             </div>
         )
     }
-
-    // Check if current route is Owner Dashboard
-    const isOwnerRoute = pathname === "/owner"
 
     return (
         <div className={`min-h-screen ${isOwnerRoute ? '' : 'bg-gradient-to-br from-red-50 to-white'} transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}>

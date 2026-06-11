@@ -63,6 +63,7 @@ interface CommissionRule {
     commission_value: number;
     service_name?: string;
     service_price?: number;
+    created_at?: string;
 }
 
 interface EmployeeCommissionStatus {
@@ -338,83 +339,55 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                 editingCommissionId
             });
 
-            // CEK DUPLIKAT - Pastikan tidak ada komisi ganda untuk user_id + service_id yang sama
-            if (!editMode) {
-                console.log('Checking for duplicate commission...');
-                const { data: existingCommissions, error: checkError } = await supabase
-                    .from('commission_rules')
-                    .select('*')
-                    .eq('user_id', selectedEmployee.id)
-                    .eq('service_id', selectedService);
-
-                if (checkError) {
-                    console.error('Error checking duplicates:', checkError);
-                    throw checkError;
-                }
-
-                if (existingCommissions && existingCommissions.length > 0) {
-                    console.log('Duplicate found:', existingCommissions);
-                    toast({
-                        title: "Komisi Sudah Ada",
-                        description: `Komisi untuk layanan ini sudah diatur. Silakan gunakan tombol Edit untuk mengubahnya.`,
-                        variant: "destructive"
-                    });
-                    setLoading(false);
-                    return;
-                }
-            }
-
-            let data, error;
-
             if (editMode && editingCommissionId) {
-                // Update existing commission
+                // Update via API route (Drizzle ORM - server side)
                 console.log('Updating commission with ID:', editingCommissionId);
-                const result = await supabase
-                    .from('commission_rules')
-                    .update({
+                const res = await fetch('/api/commissions', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: editingCommissionId,
                         commission_type: commissionType,
                         commission_value: value
                     })
-                    .eq('id', editingCommissionId)
-                    .select();
-                data = result.data;
-                error = result.error;
-                console.log('Update result:', { data, error });
+                });
+                const json = await res.json();
+                if (!res.ok) {
+                    console.error('Update error:', json);
+                    throw new Error(json.error || 'Gagal update komisi');
+                }
+                console.log('Update result:', json);
             } else {
-                // Insert new commission
+                // Insert via API route (Drizzle ORM - server side)
                 console.log('Inserting new commission');
-                const result = await supabase
-                    .from('commission_rules')
-                    .insert({
+                const res = await fetch('/api/commissions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
                         user_id: selectedEmployee.id,
                         service_id: selectedService,
                         commission_type: commissionType,
                         commission_value: value
                     })
-                    .select();
-                data = result.data;
-                error = result.error;
-                console.log('Insert result:', { data, error });
-            }
-
-            if (error) {
-                console.error('Error saving commission:', error);
-                
-                // Jika error karena constraint unique violation
-                if (error.code === '23505') {
+                });
+                const json = await res.json();
+                if (res.status === 409) {
                     toast({
                         title: "Komisi Sudah Ada",
-                        description: "Komisi untuk karyawan dan layanan ini sudah ada. Gunakan Edit untuk mengubahnya.",
+                        description: "Komisi untuk layanan ini sudah diatur. Silakan gunakan tombol Edit untuk mengubahnya.",
                         variant: "destructive"
                     });
-                } else {
-                    throw error;
+                    setLoading(false);
+                    return;
                 }
-                setLoading(false);
-                return;
+                if (!res.ok) {
+                    console.error('Insert error:', json);
+                    throw new Error(json.error || 'Gagal simpan komisi');
+                }
+                console.log('Insert result:', json);
             }
 
-            console.log('Commission saved successfully:', data);
+            console.log('Commission saved successfully.');
 
             toast({
                 title: "Berhasil",
@@ -447,12 +420,11 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
 
         setLoading(true);
         try {
-            const { error } = await supabase
-                .from('commission_rules')
-                .delete()
-                .eq('id', commissionId);
-
-            if (error) throw error;
+            const res = await fetch(`/api/commissions?id=${commissionId}`, {
+                method: 'DELETE'
+            });
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error || 'Gagal hapus komisi');
 
             toast({
                 title: "Berhasil",

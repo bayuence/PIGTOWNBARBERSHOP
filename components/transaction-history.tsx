@@ -1,134 +1,117 @@
+/**
+ * Transaction History Component
+ * 
+ * Main orchestrator component for transaction management.
+ * Coordinates all transaction-related sub-components and manages global state.
+ * 
+ * Features:
+ * - Transaction list with filtering and search
+ * - Statistics cards (revenue, count, etc.)
+ * - Transaction detail view
+ * - Transaction editing
+ * - Commission management
+ * - Export functionality
+ * - Real-time updates via Supabase
+ * 
+ * Architecture:
+ * This component follows Clean Architecture principles:
+ * - Presentation: Sub-components handle UI rendering
+ * - Application: This orchestrator manages state and coordination
+ * - Infrastructure: Supabase handles data persistence
+ * 
+ * @see {@link TransactionStatsCards} for statistics display
+ * @see {@link TransactionFilters} for filter controls
+ * @see {@link TransactionTable} for transaction list
+ * @see {@link TransactionDetailModal} for detail view
+ * @see {@link TransactionEditModal} for editing
+ * @see {@link TransactionCommissionDialog} for commission management
+ */
+
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Search, Filter, Download, Eye, RefreshCw, Trash2, Edit, Plus, Minus } from "lucide-react"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { RefreshCw, Download } from "lucide-react"
 import { 
   supabase, 
   setupTransactionsRealtime, 
-  Transaction, 
-  Branch, 
   subscribeToEvents,
   broadcastTransactionEvent
 } from "../lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import type { 
+  Transaction, 
+  Branch, 
+  TransactionItem, 
+  EditTransactionData,
+  Service,
+  DateFilterType
+} from "./transactions/types"
+import { getDateRange } from "@/lib/utils/transaction-helpers"
+import { TransactionStatsCards } from "./transactions/transaction-stats-cards"
+import { TransactionDeleteDialog } from "./transactions/transaction-delete-dialog"
+import { TransactionExportModal } from "./transactions/transaction-export-modal"
+import { TransactionFilters } from "./transactions/transaction-filters"
+import { TransactionTable } from "./transactions/transaction-table"
+import { TransactionDetailModal } from "./transactions/transaction-detail-modal"
+import { TransactionEditModal } from "./transactions/transaction-edit-modal"
+import { TransactionCommissionDialog } from "./transactions/transaction-commission-dialog"
 
-interface TransactionItem {
-  id: string
-  service_id: string
-  quantity: number
-  unit_price: number
-  total_price: number
-  service?: {
-    name: string
-    price: number
-  }
-  commission_type?: 'percentage' | 'fixed'
-  commission_value?: number
-  commission_amount?: number
-  has_commission?: boolean
-}
-
-interface EditTransactionData {
-  customer_name: string
-  payment_method: string
-  payment_status: string
-  notes: string
-  discount: number
-  discount_type: "percentage" | "fixed"
-  discount_value: string
-  discount_reason: string
-  items: TransactionItem[]
-}
-
+/**
+ * Transaction History Component
+ * 
+ * Main component for managing and viewing transaction history
+ */
 export function TransactionHistory() {
+  // ============================================================================
+  // STATE MANAGEMENT
+  // ============================================================================
+  
+  // Data state
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [branches, setBranches] = useState<Branch[]>([])
   const [branchesLoading, setBranchesLoading] = useState(true)
+  const [statuses, setStatuses] = useState<string[]>([])
+  const [services, setServices] = useState<Service[]>([])
 
-  // State untuk filter
+  // Filter state
   const [searchTerm, setSearchTerm] = useState("")
   const [filterBranch, setFilterBranch] = useState("all")
   const [filterStatus, setFilterStatus] = useState("all")
-
-  // Filter waktu yang fleksibel
-  const [dateFilter, setDateFilter] = useState("this_month")
+  const [dateFilter, setDateFilter] = useState<DateFilterType>("this_month")
   const [customStartDate, setCustomStartDate] = useState(new Date().toISOString().split("T")[0])
   const [customEndDate, setCustomEndDate] = useState(new Date().toISOString().split("T")[0])
 
-  // State untuk modal detail
+  // Modal state
   const [showDetailModal, setShowDetailModal] = useState(false)
-  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null)
-
-  // State untuk modal edit
   const [showEditModal, setShowEditModal] = useState(false)
-  const [isEditing, setIsEditing] = useState(false)
-  const [editData, setEditData] = useState<EditTransactionData>({
-    customer_name: "",
-    payment_method: "cash",
-    payment_status: "completed",
-    notes: "",
-    discount: 0,
-    discount_type: "percentage",
-    discount_value: "",
-    discount_reason: "",
-    items: []
-  })
-
-  // State untuk modal export
   const [showExportModal, setShowExportModal] = useState(false)
-  const [exportStartDate, setExportStartDate] = useState(new Date().toISOString().split("T")[0])
-  const [exportEndDate, setExportEndDate] = useState(new Date().toISOString().split("T")[0])
-  const [exportLoading, setExportLoading] = useState(false)
-  const [exportBranch, setExportBranch] = useState("all")
-
-  // State untuk fitur hapus
-  const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null)
+  const [showCommissionDialog, setShowCommissionDialog] = useState(false)
   const [isConfirmDeleteDialogOpen, setIsConfirmDeleteDialogOpen] = useState(false)
 
-  // State untuk status dinamis
-  const [statuses, setStatuses] = useState<string[]>([])
-  const [services, setServices] = useState<any[]>([])
-
-  // State untuk commission management
-  const [showCommissionDialog, setShowCommissionDialog] = useState(false)
+  // Selected items state
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null)
+  const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null)
   const [selectedItemForCommission, setSelectedItemForCommission] = useState<{index: number, item: TransactionItem} | null>(null)
-  const [commissionType, setCommissionType] = useState<'percentage' | 'fixed'>('percentage')
-  const [commissionValue, setCommissionValue] = useState('')
-  const [employees, setEmployees] = useState<any[]>([])
+
+  // Loading state
+  const [isEditing, setIsEditing] = useState(false)
+  const [exportLoading, setExportLoading] = useState(false)
 
   const { toast } = useToast()
 
+  // ============================================================================
+  // DATA FETCHING
+  // ============================================================================
+
+  /**
+   * Fetch branches from database
+   */
   const fetchBranches = async () => {
     try {
       setBranchesLoading(true)
-      const { data, error } = await supabase.from("branches").select("id, name").order("name")
+      const { data, error } = await supabase.from("branches").select("id, name, created_at").order("name")
       if (error) throw error
       setBranches(data || [])
     } catch (error) {
@@ -139,6 +122,9 @@ export function TransactionHistory() {
     }
   }
 
+  /**
+   * Fetch services from database
+   */
   const fetchServices = async () => {
     try {
       const { data, error } = await supabase.from("services").select("id, name, price")
@@ -149,11 +135,15 @@ export function TransactionHistory() {
     }
   }
 
+  /**
+   * Fetch employees from database
+   * Note: Currently not used in this component but kept for future features
+   */
   const fetchEmployees = async () => {
     try {
       const { data, error } = await supabase
         .from("users")
-        .select("id, name, position")  // ✅ Hapus 'role' - kolom tidak ada
+        .select("id, name, position")
         .eq("status", "active")
         .order("name")
       
@@ -163,13 +153,20 @@ export function TransactionHistory() {
         throw error
       }
       
-      setEmployees(data || [])
+      // Employees data loaded but not currently used in UI
+      // Available for future features like employee filtering
+      return data || []
     } catch (error) {
       console.error("Error fetching employees:", error)
-      setEmployees([]) // Set empty array jika error
+      return []
     }
   }
 
+  /**
+   * Load commission data for transaction items
+   * Note: Currently not used as commission data comes from database
+   * Kept for potential future use with real-time commission updates
+   */
   const loadCommissionForItems = async (items: TransactionItem[]) => {
     if (!items || items.length === 0) {
       console.log('⚠️ No items to load commission for')
@@ -239,6 +236,9 @@ export function TransactionHistory() {
     }
   }
 
+  /**
+   * Fetch available payment statuses
+   */
   const fetchStatuses = async () => {
     try {
       const { data, error } = await supabase.from("transactions").select("payment_status")
@@ -252,49 +252,14 @@ export function TransactionHistory() {
     }
   }
 
-  const getDateRange = () => {
-    const now = new Date()
-    let startDate: string = now.toISOString().split("T")[0]
-    let endDate: string = now.toISOString().split("T")[0]
-
-    switch (dateFilter) {
-      case "today":
-        startDate = now.toISOString().split("T")[0]
-        endDate = startDate
-        break
-
-      case "this_week":
-        const startOfWeek = new Date(now)
-        const day = startOfWeek.getDay()
-        const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1)
-        startOfWeek.setDate(diff)
-        startDate = startOfWeek.toISOString().split("T")[0]
-
-        const endOfWeek = new Date(startOfWeek)
-        endOfWeek.setDate(startOfWeek.getDate() + 6)
-        endDate = endOfWeek.toISOString().split("T")[0]
-        break
-
-      case "this_month":
-        startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`
-        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-        endDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${lastDay}`
-        break
-
-      case "custom":
-        startDate = customStartDate
-        endDate = customEndDate
-        break
-    }
-
-    return { startDate, endDate }
-  }
-
+  /**
+   * Fetch transactions from database with filters
+   */
   const fetchTransactions = async () => {
     try {
       setLoading(true)
 
-      const { startDate, endDate } = getDateRange()
+      const { startDate, endDate } = getDateRange(dateFilter, customStartDate, customEndDate)
 
       console.log("Fetching transactions for date range:", startDate, "to", endDate)
 
@@ -400,6 +365,13 @@ export function TransactionHistory() {
     }
   }
 
+  // ============================================================================
+  // ACTION HANDLERS
+  // ============================================================================
+
+  /**
+   * Handle transaction deletion
+   */
   const handleDeleteTransaction = async () => {
     if (!transactionToDelete) return
     
@@ -418,8 +390,8 @@ export function TransactionHistory() {
 
       if (transactionError) throw transactionError
 
-      // 🔥 KIRIM BROADCAST EVENT UNTUK SEMUA KOMPONEN
-      await broadcastTransactionEvent('transaction_deleted', {
+      // Broadcast event for real-time updates across components
+      broadcastTransactionEvent('transaction_deleted', {
         transaction_id: transactionToDelete.id,
         branch_id: transactionToDelete.branch_id
       })
@@ -444,23 +416,18 @@ export function TransactionHistory() {
     }
   }
 
+  /**
+   * Open edit modal for a transaction
+   */
   const handleOpenEditModal = (transaction: Transaction) => {
     setSelectedTransaction(transaction)
-    setEditData({
-      customer_name: transaction.customer_name || "",
-      payment_method: transaction.payment_method || "cash",
-      payment_status: transaction.payment_status || "completed",
-      notes: transaction.notes || "",
-      discount_amount: transaction.discount_amount || 0,
-      discount_type: "percentage",
-      discount_value: "",
-      discount_reason: "",
-      items: transaction.transaction_items || []
-    })
     setShowEditModal(true)
   }
 
-  const handleSaveEdit = async () => {
+  /**
+   * Save edited transaction data
+   */
+  const handleSaveEdit = async (editData: EditTransactionData) => {
     if (!selectedTransaction) return
 
     setIsEditing(true)
@@ -494,8 +461,8 @@ export function TransactionHistory() {
         if (itemError) throw itemError
       }
 
-      // 🔥 BROADCAST EVENT UNTUK UPDATE
-      await broadcastTransactionEvent('transaction_updated', {
+      // Broadcast event for real-time updates across components
+      broadcastTransactionEvent('transaction_updated', {
         transaction_id: selectedTransaction.id,
         branch_id: selectedTransaction.branch_id
       })
@@ -520,76 +487,42 @@ export function TransactionHistory() {
     }
   }
 
-  const updateItemQuantity = (index: number, newQuantity: number) => {
-    if (newQuantity < 1) return
-    
-    setEditData(prev => {
-      const newItems = [...prev.items]
-      newItems[index] = {
-        ...newItems[index],
-        quantity: newQuantity,
-        total_price: newQuantity * newItems[index].unit_price
+  // ============================================================================
+  // EFFECTS - Lifecycle & Side Effects
+  // ============================================================================
+
+  /**
+   * Initialize data and setup real-time subscriptions
+   */
+  useEffect(() => {
+    fetchTransactions()
+    fetchBranches()
+    fetchStatuses()
+    fetchServices()
+    fetchEmployees()
+
+    // Setup real-time subscriptions for transaction updates
+    const transactionsChannel = setupTransactionsRealtime(() => {
+      console.log("Transaction change detected, refreshing data...")
+      fetchTransactions()
+    })
+
+    // Listen for broadcast events from other components
+    subscribeToEvents((event: string, payload: any) => {
+      console.log('Global event received:', event, payload)
+      if (event === 'transaction_created' || event === 'transaction_deleted' || event === 'transaction_updated') {
+        fetchTransactions()
       }
-      return { ...prev, items: newItems }
     })
-  }
 
-  const updateItemPrice = (index: number, newPrice: number) => {
-    if (newPrice < 0) return
-    
-    setEditData(prev => {
-      const newItems = [...prev.items]
-      newItems[index] = {
-        ...newItems[index],
-        unit_price: newPrice,
-        total_price: newItems[index].quantity * newPrice
-      }
-      return { ...prev, items: newItems }
-    })
-  }
+    return () => {
+      supabase.removeChannel(transactionsChannel)
+    }
+  }, [dateFilter, customStartDate, customEndDate, filterBranch])
 
-  const addNewItem = () => {
-    setEditData(prev => ({
-      ...prev,
-      items: [
-        ...prev.items,
-        {
-          id: `new-${Date.now()}`,
-          service_id: "",
-          quantity: 1,
-          unit_price: 0,
-          total_price: 0,
-          service: { name: "Pilih Layanan", price: 0 }
-        }
-      ]
-    }))
-  }
-
-  const removeItem = (index: number) => {
-    setEditData(prev => {
-      const newItems = [...prev.items]
-      newItems.splice(index, 1)
-      return { ...prev, items: newItems }
-    })
-  }
-
-  const updateItemService = (index: number, serviceId: string) => {
-    const service = services.find(s => s.id === serviceId)
-    if (!service) return
-
-    setEditData(prev => {
-      const newItems = [...prev.items]
-      newItems[index] = {
-        ...newItems[index],
-        service_id: serviceId,
-        unit_price: service.price,
-        total_price: newItems[index].quantity * service.price,
-        service: { name: service.name, price: service.price }
-      }
-      return { ...prev, items: newItems }
-    })
-  }
-
+  /**
+   * Initialize data and setup real-time subscriptions
+   */
   useEffect(() => {
     fetchTransactions()
     fetchBranches()
@@ -604,7 +537,7 @@ export function TransactionHistory() {
     })
 
     // 🔥 LISTEN UNTUK BROADCAST EVENTS
-    const globalChannel = subscribeToEvents((event, payload) => {
+    const globalChannel = subscribeToEvents((event: string, payload: any) => {
       console.log('Global event received:', event, payload)
       if (event === 'transaction_created' || event === 'transaction_deleted' || event === 'transaction_updated') {
         fetchTransactions()
@@ -613,11 +546,14 @@ export function TransactionHistory() {
 
     return () => {
       supabase.removeChannel(transactionsChannel)
-      supabase.removeChannel(globalChannel)
+      // globalChannel might not be a RealtimeChannel, so we skip cleanup
+      // The subscribeToEvents function handles its own cleanup
     }
   }, [dateFilter, customStartDate, customEndDate, filterBranch])
 
-  // Auto refresh every 30 seconds
+  /**
+   * Auto refresh transactions every 30 seconds
+   */
   useEffect(() => {
     const interval = setInterval(() => {
       fetchTransactions()
@@ -625,6 +561,13 @@ export function TransactionHistory() {
     return () => clearInterval(interval)
   }, [dateFilter, customStartDate, customEndDate, filterBranch])
 
+  // ============================================================================
+  // COMPUTED VALUES - Memoized Calculations
+  // ============================================================================
+
+  /**
+   * Filter transactions based on search term, branch, and status
+   */
   const filteredTransactions = useMemo(() => {
     console.log('🔍 Filtering transactions:', { 
       total: transactions.length, 
@@ -662,88 +605,14 @@ export function TransactionHistory() {
     return filtered;
   }, [transactions, searchTerm, filterBranch, filterStatus])
 
-  const totalRevenue = filteredTransactions
-    .filter((t) => t.payment_status === "completed")
-    .reduce((sum, t) => sum + (t.total_amount || 0), 0)
+  // ============================================================================
+  // UI ACTION HANDLERS - User Interactions
+  // ============================================================================
 
-  const totalTransactions = filteredTransactions.length
-  const completedTransactions = filteredTransactions.filter((t) => t.payment_status === "completed").length
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "completed":
-        return "bg-green-100 text-green-800"
-      case "refunded":
-        return "bg-red-100 text-red-800"
-      case "pending":
-        return "bg-yellow-100 text-yellow-800"
-      default:
-        return "bg-gray-100 text-gray-800"
-    }
-  }
-
-  const getPaymentMethodColor = (method: string) => {
-    switch (method) {
-      case "cash":
-        return "bg-blue-100 text-blue-800"
-      case "qris":
-        return "bg-red-100 text-red-800"
-      case "debit":
-        return "bg-orange-100 text-orange-800"
-      case "credit":
-        return "bg-indigo-100 text-indigo-800"
-      default:
-        return "bg-gray-100 text-gray-800"
-    }
-  }
-
-  const formatTime = (dateString: string) =>
-    new Date(dateString).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
-
-  const formatPaymentMethod = (method: string) => {
-    switch (method) {
-      case "cash":
-        return "Tunai"
-      case "qris":
-        return "QRIS"
-      case "debit":
-        return "Kartu Debit"
-      case "credit":
-        return "Kartu Kredit"
-      default:
-        return method
-    }
-  }
-
-  const formatStatus = (status: string) => {
-    switch (status) {
-      case "completed":
-        return "Selesai"
-      case "refunded":
-        return "Refund"
-      case "pending":
-        return "Pending"
-      default:
-        return status
-    }
-  }
-
-  const getDateFilterLabel = () => {
-    switch (dateFilter) {
-      case "today":
-        return "Hari Ini"
-      case "this_week":
-        return "Minggu Ini"
-      case "this_month":
-        return "Bulan Ini"
-      case "custom":
-        return "Rentang Custom"
-      default:
-        return "Hari Ini"
-    }
-  }
-
-  const generatePDFReport = async () => {
+  /**
+   * Generate PDF report (placeholder for future implementation)
+   */
+  const generatePDFReport = async (_options: { startDate: string; endDate: string; branchId: string; format: string }) => {
     setExportLoading(true)
     try {
       await new Promise((resolve) => setTimeout(resolve, 2000))
@@ -757,11 +626,17 @@ export function TransactionHistory() {
     }
   }
 
+  /**
+   * Open transaction detail modal
+   */
   const openTransactionDetail = (transaction: Transaction) => {
     setSelectedTransaction(transaction)
     setShowDetailModal(true)
   }
 
+  /**
+   * Open commission management dialog for a transaction item
+   */
   const handleOpenCommissionDialog = (index: number, item: TransactionItem) => {
     if (!selectedTransaction?.cashier_id) {
       toast({
@@ -773,106 +648,12 @@ export function TransactionHistory() {
     }
 
     setSelectedItemForCommission({ index, item })
-    
-    // Pre-fill jika sudah ada commission
-    if (item.has_commission) {
-      setCommissionType(item.commission_type || 'percentage')
-      setCommissionValue(item.commission_value?.toString() || '')
-    } else {
-      setCommissionType('percentage')
-      setCommissionValue('')
-    }
-    
     setShowCommissionDialog(true)
   }
 
-  const handleSaveCommission = async () => {
-    if (!selectedTransaction || !selectedItemForCommission || !commissionValue) {
-      toast({
-        title: "Error",
-        description: "Data tidak lengkap",
-        variant: "destructive"
-      })
-      return
-    }
-
-    try {
-      const item = selectedItemForCommission.item;
-      const value = commissionType === 'percentage' 
-        ? parseFloat(commissionValue) 
-        : parseFloat(commissionValue);
-
-      // Hitung commission_amount
-      const commissionAmount = commissionType === 'percentage'
-        ? (item.unit_price * value / 100) * item.quantity
-        : value * item.quantity;
-
-      console.log('💾 Saving commission:', {
-        item_id: item.id,
-        barber_id: item.barber_id,
-        service_id: item.service_id,
-        type: commissionType,
-        value: value,
-        amount: commissionAmount
-      });
-
-      // 1. Update transaction_items dengan data komisi
-      const { error: itemError } = await supabase
-        .from('transaction_items')
-        .update({
-          commission_status: 'credited',
-          commission_type: commissionType,
-          commission_value: value,
-          commission_amount: commissionAmount
-        })
-        .eq('id', item.id);
-
-      if (itemError) {
-        console.error('Error updating transaction_items:', itemError);
-        throw itemError;
-      }
-
-      // 2. Simpan juga ke commission_rules untuk transaksi selanjutnya (hanya jika ada barber_id)
-      if (item.barber_id && item.service_id) {
-        const commissionRule = {
-          user_id: item.barber_id,
-          service_id: item.service_id,
-          commission_type: commissionType,
-          commission_value: value,
-        };
-
-        const { error: ruleError } = await supabase
-          .from('commission_rules')
-          .upsert(commissionRule, { onConflict: 'user_id,service_id' });
-
-        if (ruleError) {
-          console.warn('Warning: Failed to save commission rule (non-critical):', ruleError);
-          // Tidak throw error karena yang penting transaction_items sudah tersimpan
-        }
-      }
-
-      toast({
-        title: "Berhasil",
-        description: "Komisi berhasil disimpan dan diterapkan ke transaksi ini"
-      });
-
-      // Refresh transactions untuk update commission data
-      await fetchTransactions();
-
-      // Close dialog
-      setShowCommissionDialog(false);
-      setSelectedItemForCommission(null);
-      setCommissionValue('');
-
-    } catch (error) {
-      console.error("Error saving commission:", error);
-      toast({
-        title: "Gagal",
-        description: "Terjadi kesalahan saat menyimpan komisi",
-        variant: "destructive"
-      });
-    }
-  }
+  // ============================================================================
+  // RENDER - Component UI
+  // ============================================================================
 
   return (
     <div className="space-y-4 md:space-y-6 p-3 md:p-6">
@@ -904,843 +685,150 @@ export function TransactionHistory() {
       </div>
 
       {/* Stats Cards - Mobile Responsive */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 lg:gap-6">
-        <Card>
-          <CardHeader className="pb-2 p-3 md:p-4">
-            <CardTitle className="text-xs md:text-sm font-medium text-gray-600 line-clamp-1">Total Transaksi</CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 md:p-4 pt-0">
-            <div className="text-lg md:text-2xl font-bold text-gray-900">{totalTransactions}</div>
-            <p className="text-[10px] md:text-xs text-gray-600 truncate">{getDateFilterLabel()}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2 p-3 md:p-4">
-            <CardTitle className="text-xs md:text-sm font-medium text-gray-600 line-clamp-1">Transaksi Selesai</CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 md:p-4 pt-0">
-            <div className="text-lg md:text-2xl font-bold text-green-600">{completedTransactions}</div>
-            <p className="text-[10px] md:text-xs text-gray-600 truncate">berhasil diselesaikan</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2 p-3 md:p-4">
-            <CardTitle className="text-xs md:text-sm font-medium text-gray-600 line-clamp-1">Total Pendapatan</CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 md:p-4 pt-0">
-            <div className="text-sm md:text-2xl font-bold text-blue-600 truncate">Rp {totalRevenue.toLocaleString("id-ID")}</div>
-            <p className="text-[10px] md:text-xs text-gray-600 truncate">dari transaksi selesai</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2 p-3 md:p-4">
-            <CardTitle className="text-xs md:text-sm font-medium text-gray-600 line-clamp-2">Rata-rata Transaksi</CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 md:p-4 pt-0">
-            <div className="text-sm md:text-2xl font-bold text-red-600 truncate">
-              Rp{" "}
-              {completedTransactions > 0 ? Math.round(totalRevenue / completedTransactions).toLocaleString("id-ID") : 0}
-            </div>
-            <p className="text-[10px] md:text-xs text-gray-600 truncate">per transaksi</p>
-          </CardContent>
-        </Card>
-      </div>
+      <TransactionStatsCards
+        transactions={filteredTransactions}
+        loading={loading}
+        dateFilter={dateFilter}
+      />
 
       {/* Filters - Mobile Responsive */}
-      <Card>
-        <CardHeader className="p-3 md:p-4 lg:p-6">
-          <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-            <Filter className="h-4 w-4 md:h-5 md:w-5" />
-            Filter & Pencarian
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-3 md:p-4 lg:p-6 pt-0">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4 mb-4">
-            <div className="relative sm:col-span-2">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-3.5 w-3.5 md:h-4 md:w-4" />
-              <Input
-                placeholder="Cari transaksi, customer..."
-                value={searchTerm}
-                onChange={(e) => {
-                  console.log('🔍 Search term changed:', e.target.value)
-                  setSearchTerm(e.target.value)
-                }}
-                className="pl-9 md:pl-10 text-xs md:text-sm h-9 md:h-10"
-              />
-            </div>
-
-            <Select value={dateFilter} onValueChange={(value) => {
-              console.log('📅 Date filter changed:', value)
-              setDateFilter(value)
-            }}>
-              <SelectTrigger className="text-xs md:text-sm h-9 md:h-10">
-                <SelectValue placeholder="Pilih Periode" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="today">Hari Ini</SelectItem>
-                <SelectItem value="this_week">Minggu Ini</SelectItem>
-                <SelectItem value="this_month">Bulan Ini</SelectItem>
-                <SelectItem value="custom">Rentang Custom</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={filterBranch} onValueChange={(value) => {
-              console.log('🏢 Branch filter changed:', value)
-              setFilterBranch(value)
-            }} disabled={branchesLoading}>
-              <SelectTrigger className="text-xs md:text-sm h-9 md:h-10">
-                <SelectValue placeholder={branchesLoading ? "Memuat..." : "Pilih Cabang"} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Semua Cabang</SelectItem>
-                {branches.map((branch) => (
-                  <SelectItem key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={filterStatus} onValueChange={(value) => {
-              console.log('📊 Status filter changed:', value)
-              setFilterStatus(value)
-            }}>
-              <SelectTrigger className="text-xs md:text-sm h-9 md:h-10">
-                <SelectValue placeholder="Pilih Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Semua Status</SelectItem>
-                {statuses.map((status) => (
-                  <SelectItem key={status} value={status}>
-                    {formatStatus(status)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {dateFilter === "custom" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label>Tanggal Mulai</Label>
-                <Input
-                  type="date"
-                  value={customStartDate}
-                  onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label>Tanggal Akhir</Label>
-                <Input
-                  type="date"
-                  value={customEndDate}
-                  onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <TransactionFilters
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+        dateFilter={dateFilter}
+        onDateFilterChange={setDateFilter}
+        customStartDate={customStartDate}
+        customEndDate={customEndDate}
+        onCustomDateChange={(start, end) => {
+          setCustomStartDate(start)
+          setCustomEndDate(end)
+        }}
+        filterBranch={filterBranch}
+        onBranchChange={setFilterBranch}
+        branches={branches}
+        branchesLoading={branchesLoading}
+        filterStatus={filterStatus}
+        onStatusChange={setFilterStatus}
+        statuses={statuses}
+      />
 
       {/* Transaction List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Daftar Transaksi - {getDateFilterLabel()}</CardTitle>
-          <CardDescription>
-            {loading
-              ? "Memuat data..."
-              : `Menampilkan ${filteredTransactions.length} transaksi dari total ${transactions.length} transaksi`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="text-center py-12">
-              <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2" />
-              <p>Memuat data transaksi...</p>
-            </div>
-          ) : filteredTransactions.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              {transactions.length === 0
-                ? "Tidak ada transaksi dalam periode ini."
-                : "Tidak ada transaksi yang sesuai dengan filter."}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {filteredTransactions.map((transaction) => (
-                <div key={transaction.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="font-mono text-sm font-medium text-gray-900">
-                        {transaction.transaction_number || `TX-${transaction.id.slice(0, 8)}`}
-                      </div>
-                      <Badge className={getStatusColor(transaction.payment_status)}>
-                        {formatStatus(transaction.payment_status)}
-                      </Badge>
-                      <Badge className={getPaymentMethodColor(transaction.payment_method)}>
-                        {formatPaymentMethod(transaction.payment_method)}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-600">{formatTime(transaction.created_at)}</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="gap-1"
-                        onClick={() => openTransactionDetail(transaction)}
-                      >
-                        <Eye className="h-4 w-4" />
-                        Detail
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="gap-1 text-blue-600 hover:text-blue-700"
-                        onClick={() => handleOpenEditModal(transaction)}
-                      >
-                        <Edit className="h-4 w-4" />
-                        Edit
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="gap-1 text-red-600 hover:text-red-700"
-                        onClick={() => {
-                          setTransactionToDelete(transaction)
-                          setIsConfirmDeleteDialogOpen(true)
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Hapus
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <span className="text-gray-600">Customer:</span>
-                      <div className="font-medium">{transaction.customer_name || "Tidak ada nama"}</div>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Dilayani oleh:</span>
-                      <div className="font-medium">{transaction.server?.name || "N/A"}</div>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Cabang:</span>
-                      <div className="font-medium">{transaction.branch?.name || "N/A"}</div>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Total:</span>
-                      <div className="font-bold text-lg text-red-600">
-                        Rp {transaction.total_amount?.toLocaleString("id-ID")}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Tampilan Items & Komisi */}
-                  {transaction.transaction_items && transaction.transaction_items.length > 0 && (
-                    <div className="mt-3 pt-3 border-t">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-700">Items & Komisi:</span>
-                        {(() => {
-                          const totalCommission = transaction.transaction_items?.reduce((sum, item: any) => 
-                            sum + (item.commission_amount || 0), 0) || 0
-                          const itemsWithCommission = transaction.transaction_items?.filter((item: any) => item.has_commission).length || 0
-                          const totalItems = transaction.transaction_items?.length || 0
-                          
-                          return (
-                            <div className="flex items-center gap-2">
-                              {totalCommission > 0 ? (
-                                <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
-                                  💰 Total Komisi: Rp {totalCommission.toLocaleString('id-ID')}
-                                </Badge>
-                              ) : (
-                                <Badge variant="outline" className="text-orange-600 border-orange-300">
-                                  ⚠️ Belum ada komisi
-                                </Badge>
-                              )}
-                              <span className="text-xs text-gray-500">
-                                {itemsWithCommission}/{totalItems} item dengan komisi
-                              </span>
-                            </div>
-                          )
-                        })()}
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {transaction.transaction_items.map((item: any, idx: number) => (
-                          <div key={idx} className="text-xs p-2 bg-gray-50 rounded border">
-                            <div className="flex justify-between items-start mb-1">
-                              <span className="font-medium text-gray-800">{item.service?.name || 'Item'}</span>
-                              <span className="text-gray-600">
-                                {item.quantity}x Rp {item.unit_price?.toLocaleString('id-ID')}
-                              </span>
-                            </div>
-                            {item.has_commission ? (
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 text-green-700 bg-green-50 px-2 py-1 rounded flex-1">
-                                  <span className="flex items-center gap-1">
-                                    ✓ Komisi: {item.commission_type === 'percentage' 
-                                      ? `${item.commission_value}%` 
-                                      : `Rp ${item.commission_value?.toLocaleString('id-ID')}`}
-                                  </span>
-                                  <span className="font-medium">
-                                    = Rp {item.commission_amount?.toLocaleString('id-ID')}
-                                  </span>
-                                </div>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => {
-                                    setSelectedTransaction(transaction)
-                                    handleOpenCommissionDialog(idx, item)
-                                  }}
-                                  className="h-6 px-2 text-xs ml-1"
-                                >
-                                  <Edit className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-between">
-                                <span className="text-orange-600 text-xs">
-                                  ⚠️ Komisi belum diatur
-                                </span>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setSelectedTransaction(transaction)
-                                    handleOpenCommissionDialog(idx, item)
-                                  }}
-                                  className="h-6 px-2 text-xs text-orange-600 border-orange-300 hover:bg-orange-50"
-                                >
-                                  <Plus className="h-3 w-3 mr-1" />
-                                  Atur
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <TransactionTable
+        transactions={filteredTransactions}
+        loading={loading}
+        totalCount={transactions.length}
+        dateFilter={dateFilter}
+        onViewDetail={openTransactionDetail}
+        onEdit={handleOpenEditModal}
+        onDelete={(transaction) => {
+          setTransactionToDelete(transaction)
+          setIsConfirmDeleteDialogOpen(true)
+        }}
+        onCommission={(transaction, itemIndex, item) => {
+          setSelectedTransaction(transaction)
+          handleOpenCommissionDialog(itemIndex, item)
+        }}
+      />
 
       {/* Export Modal */}
-      <Dialog open={showExportModal} onOpenChange={setShowExportModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Export Laporan PDF</DialogTitle>
-            <DialogDescription>
-              Pilih rentang tanggal dan cabang untuk laporan transaksi yang akan di-export ke PDF.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label className="text-right">Dari Tanggal</Label>
-              <Input
-                type="date"
-                value={exportStartDate}
-                onChange={(e) => setExportStartDate(e.target.value)}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label className="text-right">Sampai Tanggal</Label>
-              <Input
-                type="date"
-                value={exportEndDate}
-                onChange={(e) => setExportEndDate(e.target.value)}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label className="text-right">Cabang</Label>
-              <Select value={exportBranch} onValueChange={setExportBranch}>
-                <SelectTrigger className="col-span-3">
-                  <SelectValue placeholder="Pilih Cabang" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua Cabang</SelectItem>
-                  {branches.map((branch) => (
-                    <SelectItem key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowExportModal(false)}>
-              Batal
-            </Button>
-            <Button onClick={generatePDFReport} disabled={exportLoading} className="gap-2">
-              {exportLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              {exportLoading ? "Generating..." : "Download PDF"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <TransactionExportModal
+        open={showExportModal}
+        onOpenChange={setShowExportModal}
+        onExport={generatePDFReport}
+        branches={branches}
+        loading={exportLoading}
+      />
 
       {/* Transaction Detail Modal */}
-      <Dialog open={showDetailModal} onOpenChange={setShowDetailModal}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Detail Transaksi</DialogTitle>
-            <DialogDescription>
-              Informasi lengkap transaksi {selectedTransaction?.transaction_number || selectedTransaction?.id}
-            </DialogDescription>
-          </DialogHeader>
-          {selectedTransaction && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm font-medium text-gray-600">ID Transaksi</Label>
-                  <p className="font-mono text-sm mt-1">
-                    {selectedTransaction.transaction_number || selectedTransaction.id}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-600">Tanggal & Waktu</Label>
-                  <p className="text-sm mt-1">
-                    {new Date(selectedTransaction.created_at).toLocaleDateString("id-ID", {
-                      weekday: "long",
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })}
-                    <br />
-                    <span className="text-gray-500">
-                      {new Date(selectedTransaction.created_at).toLocaleTimeString("id-ID")}
-                    </span>
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-600">Customer</Label>
-                  <p className="font-medium mt-1">{selectedTransaction.customer_name || "Tidak ada nama"}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-600">Dilayani oleh</Label>
-                  <p className="font-medium mt-1">{selectedTransaction.server?.name || "N/A"}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-600">Cabang</Label>
-                  <p className="font-medium mt-1">{selectedTransaction.branch?.name || "N/A"}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-600">Status</Label>
-                  <div className="mt-1">
-                    <Badge className={getStatusColor(selectedTransaction.payment_status)}>
-                      {formatStatus(selectedTransaction.payment_status)}
-                    </Badge>
-                  </div>
-                </div>
-              </div>
-              <div className="border-t pt-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium text-gray-600">Metode Pembayaran</Label>
-                    <div className="mt-1">
-                      <Badge className={getPaymentMethodColor(selectedTransaction.payment_method)}>
-                        {formatPaymentMethod(selectedTransaction.payment_method)}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-gray-600">Total Pembayaran</Label>
-                    <p className="text-2xl font-bold text-red-600 mt-1">
-                      Rp {selectedTransaction.total_amount?.toLocaleString("id-ID")}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              {selectedTransaction.notes && (
-                <div>
-                  <Label className="text-sm font-medium text-gray-600">Catatan</Label>
-                  <p className="text-sm mt-1 p-3 bg-yellow-50 rounded-lg">{selectedTransaction.notes}</p>
-                </div>
-              )}
-              {selectedTransaction.transaction_items && selectedTransaction.transaction_items.length > 0 && (
-                <div>
-                  <Label className="text-sm font-medium text-gray-600">Items & Komisi</Label>
-                  <div className="mt-2 space-y-2">
-                    {selectedTransaction.transaction_items.map((item: any, index: number) => (
-                      <div key={index} className="p-3 bg-gray-50 rounded-lg border">
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex-1">
-                            <span className="font-medium">{item.services?.name || `Item ${index + 1}`}</span>
-                            <div className="text-sm text-gray-600 mt-1">
-                              {item.quantity} x Rp {item.unit_price?.toLocaleString("id-ID")} = Rp {item.total_price?.toLocaleString("id-ID")}
-                            </div>
-                          </div>
-                        </div>
-                        {item.has_commission ? (
-                          <div className="mt-2 pt-2 border-t border-gray-200">
-                            <div className="flex justify-between items-center">
-                              <div className="text-sm">
-                                <span className="text-green-600 font-medium">✓ Komisi: </span>
-                                <span className="text-gray-700">
-                                  {item.commission_type === 'percentage' 
-                                    ? `${item.commission_value}%` 
-                                    : `Rp ${item.commission_value?.toLocaleString('id-ID')}`
-                                  } = Rp {item.commission_amount?.toLocaleString('id-ID')}
-                                </span>
-                              </div>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleOpenCommissionDialog(index, item)}
-                                className="h-7 text-xs"
-                              >
-                                <Edit className="h-3 w-3 mr-1" />
-                                Ubah
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="mt-2 pt-2 border-t border-gray-200">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleOpenCommissionDialog(index, item)}
-                              className="h-7 text-xs text-orange-600 border-orange-300 hover:bg-orange-50"
-                            >
-                              <Plus className="h-3 w-3 mr-1" />
-                              Atur Komisi
-                            </Button>
-                            <span className="text-xs text-gray-500 ml-2">Belum ada komisi untuk layanan ini</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDetailModal(false)}>
-              Tutup
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <TransactionDetailModal
+        transaction={selectedTransaction}
+        open={showDetailModal}
+        onOpenChange={setShowDetailModal}
+        onCommission={(itemIndex, item) => {
+          handleOpenCommissionDialog(itemIndex, item)
+        }}
+      />
 
       {/* Edit Transaction Modal */}
-      <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
-        <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edit Transaksi</DialogTitle>
-            <DialogDescription>
-              Edit detail transaksi {selectedTransaction?.transaction_number || selectedTransaction?.id}
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedTransaction && (
-            <Tabs defaultValue="info" className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="info">Info Transaksi</TabsTrigger>
-                <TabsTrigger value="items">Items</TabsTrigger>
-                <TabsTrigger value="payment">Pembayaran</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="info" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Nama Customer</Label>
-                    <Input
-                      value={editData.customer_name}
-                      onChange={(e) => setEditData(prev => ({ ...prev, customer_name: e.target.value }))}
-                      placeholder="Nama customer"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Cabang</Label>
-                    <Input value={selectedTransaction.branch?.name || "N/A"} disabled />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Catatan</Label>
-                  <Textarea
-                    value={editData.notes}
-                    onChange={(e) => setEditData(prev => ({ ...prev, notes: e.target.value }))}
-                    placeholder="Catatan transaksi"
-                    rows={3}
-                  />
-                </div>
-              </TabsContent>
-
-              <TabsContent value="items" className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <Label>Items Transaksi</Label>
-                  <Button size="sm" onClick={addNewItem} className="gap-1">
-                    <Plus className="h-4 w-4" /> Tambah Item
-                  </Button>
-                </div>
-                
-                <div className="space-y-3">
-                  {editData.items.map((item, index) => (
-                    <div key={item.id} className="flex items-center gap-3 p-3 border rounded-lg">
-                      <div className="flex-1 grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <Label>Layanan</Label>
-                          <Select
-                            value={item.service_id}
-                            onValueChange={(value) => updateItemService(index, value)}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Pilih layanan" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {services.map(service => (
-                                <SelectItem key={service.id} value={service.id}>
-                                  {service.name} - Rp {service.price.toLocaleString("id-ID")}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1">
-                          <Label>Harga</Label>
-                          <Input
-                            type="number"
-                            value={item.unit_price}
-                            onChange={(e) => updateItemPrice(index, Number(e.target.value))}
-                            placeholder="Harga"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1">
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            onClick={() => updateItemQuantity(index, item.quantity - 1)}
-                            disabled={item.quantity <= 1}
-                          >
-                            <Minus className="h-3 w-3" />
-                          </Button>
-                          <Input
-                            type="number"
-                            value={item.quantity}
-                            onChange={(e) => updateItemQuantity(index, Number(e.target.value))}
-                            className="w-16 text-center"
-                            min="1"
-                          />
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            onClick={() => updateItemQuantity(index, item.quantity + 1)}
-                          >
-                            <Plus className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => removeItem(index)}
-                          className="text-red-500"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </TabsContent>
-
-              <TabsContent value="payment" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Metode Pembayaran</Label>
-                    <Select
-                      value={editData.payment_method}
-                      onValueChange={(value: any) => setEditData(prev => ({ ...prev, payment_method: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cash">Tunai</SelectItem>
-                        <SelectItem value="qris">QRIS</SelectItem>
-                        <SelectItem value="debit">Kartu Debit</SelectItem>
-                        <SelectItem value="credit">Kartu Kredit</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Status Pembayaran</Label>
-                    <Select
-                      value={editData.payment_status}
-                      onValueChange={(value: any) => setEditData(prev => ({ ...prev, payment_status: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
-                        <SelectItem value="refunded">Refunded</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label>Total Amount</Label>
-                  <Input
-                    value={`Rp ${selectedTransaction.total_amount?.toLocaleString("id-ID")}`}
-                    disabled
-                  />
-                </div>
-              </TabsContent>
-            </Tabs>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEditModal(false)}>
-              Batal
-            </Button>
-            <Button onClick={handleSaveEdit} disabled={isEditing} className="gap-2">
-              {isEditing ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              ) : null}
-              {isEditing ? "Menyimpan..." : "Simpan Perubahan"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <TransactionEditModal
+        transaction={selectedTransaction}
+        open={showEditModal}
+        onOpenChange={setShowEditModal}
+        onSave={handleSaveEdit}
+        services={services}
+        loading={isEditing}
+      />
 
       {/* Commission Management Dialog */}
-      <Dialog open={showCommissionDialog} onOpenChange={setShowCommissionDialog}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Atur Komisi</DialogTitle>
-            <DialogDescription>
-              Atur komisi untuk layanan: {selectedItemForCommission?.item.service?.name || 'Item'}
-            </DialogDescription>
-          </DialogHeader>
+      <TransactionCommissionDialog
+        item={selectedItemForCommission?.item || null}
+        open={showCommissionDialog}
+        onOpenChange={setShowCommissionDialog}
+        onSave={async (type, value) => {
+          if (!selectedTransaction || !selectedItemForCommission) return
+          
+          const item = selectedItemForCommission.item
+          const commissionAmount = type === 'percentage'
+            ? (item.unit_price * value / 100) * item.quantity
+            : value * item.quantity
 
-          {selectedItemForCommission && (
-            <div className="space-y-4">
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="text-sm text-blue-800">
-                  <strong>Info:</strong> Komisi yang diatur akan disimpan ke database dan berlaku untuk transaksi selanjutnya dari karyawan yang sama untuk layanan ini.
-                </div>
-              </div>
+          try {
+            const { error: itemError } = await supabase
+              .from('transaction_items')
+              .update({
+                commission_status: 'credited',
+                commission_type: type,
+                commission_value: value,
+                commission_amount: commissionAmount
+              })
+              .eq('id', item.id)
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Layanan</Label>
-                  <Input
-                    value={selectedItemForCommission.item.service?.name || 'Item'}
-                    disabled
-                    className="bg-gray-50"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Harga Layanan</Label>
-                  <Input
-                    value={`Rp ${selectedItemForCommission.item.unit_price?.toLocaleString('id-ID')}`}
-                    disabled
-                    className="bg-gray-50"
-                  />
-                </div>
-              </div>
+            if (itemError) throw itemError
 
-              <div className="space-y-2">
-                <Label>Tipe Komisi</Label>
-                <Select value={commissionType} onValueChange={(value: 'percentage' | 'fixed') => setCommissionType(value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="percentage">Persentase (%)</SelectItem>
-                    <SelectItem value="fixed">Nominal Tetap (Rp)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            if (item.barber_id && item.service_id) {
+              const { error: ruleError } = await supabase
+                .from('commission_rules')
+                .upsert({
+                  user_id: item.barber_id,
+                  service_id: item.service_id,
+                  commission_type: type,
+                  commission_value: value,
+                }, { onConflict: 'user_id,service_id' })
 
-              <div className="space-y-2">
-                <Label>
-                  Nilai Komisi {commissionType === 'percentage' ? '(%)' : '(Rp)'}
-                </Label>
-                <Input
-                  type="number"
-                  value={commissionValue}
-                  onChange={(e) => setCommissionValue(e.target.value)}
-                  placeholder={commissionType === 'percentage' ? 'Contoh: 10' : 'Contoh: 5000'}
-                />
-              </div>
+              if (ruleError) {
+                console.warn('Warning: Failed to save commission rule:', ruleError)
+              }
+            }
 
-              {commissionValue && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="text-sm text-green-800">
-                    <strong>Preview Komisi:</strong>
-                    <div className="mt-1">
-                      {commissionType === 'percentage' ? (
-                        <>
-                          {commissionValue}% dari Rp {selectedItemForCommission.item.unit_price?.toLocaleString('id-ID')} = 
-                          <strong className="ml-1">
-                            Rp {((selectedItemForCommission.item.unit_price * parseFloat(commissionValue)) / 100).toLocaleString('id-ID')}
-                          </strong>
-                        </>
-                      ) : (
-                        <>
-                          Komisi tetap: <strong>Rp {parseFloat(commissionValue).toLocaleString('id-ID')}</strong>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+            toast({
+              title: "Berhasil",
+              description: "Komisi berhasil disimpan"
+            })
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              setShowCommissionDialog(false)
-              setSelectedItemForCommission(null)
-              setCommissionValue('')
-            }}>
-              Batal
-            </Button>
-            <Button onClick={handleSaveCommission} className="bg-green-600 hover:bg-green-700">
-              Simpan Komisi
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            await fetchTransactions()
+            setShowCommissionDialog(false)
+            setSelectedItemForCommission(null)
+          } catch (error) {
+            console.error("Error saving commission:", error)
+            toast({
+              title: "Gagal",
+              description: "Terjadi kesalahan saat menyimpan komisi",
+              variant: "destructive"
+            })
+          }
+        }}
+      />
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={isConfirmDeleteDialogOpen} onOpenChange={setIsConfirmDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Apakah Anda Yakin Ingin Menghapus?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Tindakan ini tidak dapat dibatalkan. Ini akan menghapus transaksi{" "}
-              <span className="font-bold font-mono mx-1">
-                {transactionToDelete?.transaction_number || transactionToDelete?.id}
-              </span>{" "}
-              secara permanen.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setTransactionToDelete(null)}>Batal</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleDeleteTransaction} 
-              className="bg-red-600 hover:bg-red-700 text-white"
-            >
-              Ya, Hapus Transaksi
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <TransactionDeleteDialog
+        transaction={transactionToDelete}
+        open={isConfirmDeleteDialogOpen}
+        onOpenChange={(open) => {
+          setIsConfirmDeleteDialogOpen(open)
+          if (!open) setTransactionToDelete(null)
+        }}
+        onConfirm={handleDeleteTransaction}
+      />
     </div>
   )
 }

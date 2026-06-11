@@ -617,7 +617,7 @@ export function ComprehensiveReports() {
       }
 
       const { data: usersData } = await userQuery
-      const { data: branchesData } = await supabase.from("branches").select("id, name")
+      const { data: branchesData } = await supabase.from("branches").select("id, name, created_at")
 
       const userMap = new Map(usersData?.map((u: any) => [u.id, u.name]) || [])
       const branchMap = new Map(branchesData?.map((b: any) => [b.id, b.name]) || [])

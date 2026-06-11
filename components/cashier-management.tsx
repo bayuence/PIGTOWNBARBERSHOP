@@ -388,7 +388,7 @@ export function CashierManagement() {
 
   const fetchBranches = async () => {
     try {
-      const { data, error } = await supabase.from("branches").select("id, name").order("name")
+      const { data, error } = await supabase.from("branches").select("id, name, created_at").order("name")
       if (error) {
         console.error("[v0] Error fetching branches:", error)
         return

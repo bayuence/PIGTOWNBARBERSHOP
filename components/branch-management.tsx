@@ -111,6 +111,7 @@ interface Branch {
   address: string
   phone: string
   manager: string
+  manager_id?: number | null  // INTEGER, bukan UUID
   employees: number
   status: "active" | "inactive" | "maintenance"
   revenue: string
@@ -141,6 +142,8 @@ export default function BranchManagement() {
   const [branches, setBranches] = useState<Branch[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [availableManagers, setAvailableManagers] = useState<Array<{ id: number; name: string; position?: string; role?: string }>>([])
+  const [selectedManagerId, setSelectedManagerId] = useState<string>("")
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -198,7 +201,7 @@ export default function BranchManagement() {
     name: "",
     price: 0,
     duration: 30,
-    status: 'active',
+    aktif: true,
     category: "haircut",
   })
 
@@ -230,7 +233,28 @@ export default function BranchManagement() {
     window.scrollTo({ top: 0, behavior: 'instant' });
     
     fetchBranches()
+    fetchAvailableManagers()
   }, [])
+
+  const fetchAvailableManagers = async () => {
+    try {
+      // Ambil SEMUA user tanpa filter role, biar semua orang bisa jadi manager
+      const { data, error } = await supabase
+        .from("users")
+        .select("id, name, position, role")
+        .eq("status", "active")
+        .order("name")
+
+      if (error) {
+        console.error("[v0] Error fetching managers:", error)
+        return
+      }
+
+      setAvailableManagers(data || [])
+    } catch (err) {
+      console.error("[v0] Error in fetchAvailableManagers:", err)
+    }
+  }
 
   const fetchBranches = async () => {
     try {
@@ -300,15 +324,16 @@ export default function BranchManagement() {
             if (!shiftsError && shiftsData) {
               shifts = shiftsData.map((shift: any) => ({
                 id: shift.id,
-                name: shift.name,
+                name: shift.shift_name,
                 startTime: shift.start_time,
                 endTime: shift.end_time,
-                days: shift.days || [],
-                currentEmployees: shift.current_employees || 0,
-                isActive: shift.status === 'active',
-                breakTimes: shift.break_times || [],
-                minStaff: shift.min_staff || 1,
-                hasBreakTime: shift.has_break_time || false,
+                days: shift.shift_type ? shift.shift_type.split(',') : [],
+                maxEmployees: 10,
+                currentEmployees: 0,
+                status: shift.is_active ? 'active' : 'inactive',
+                breakTimes: [],
+                minStaff: 1,
+                hasBreakTime: false,
               }));
             }
           } catch (error) {
@@ -316,7 +341,7 @@ export default function BranchManagement() {
           }
           
           // Get revenue from transactions with error handling
-          let transactions = null;
+          let transactions: any[] = []
           try {
             const { data, error } = await supabase
               .from("transactions")
@@ -324,7 +349,7 @@ export default function BranchManagement() {
               .eq("branch_id", branch.id)
               .gte("created_at", new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString());
 
-            if (!error) {
+            if (!error && data) {
               transactions = data;
             } else {
               console.warn(`[v0] Error fetching transactions for branch ${branch.name}:`, error);
@@ -335,8 +360,8 @@ export default function BranchManagement() {
             transactions = [];
           }
 
-          const revenue = transactions?.reduce((sum, t) => sum + (t.total_amount || 0), 0) || 0
-          const customerCount = transactions?.length || 0
+          const revenue = transactions.reduce((sum: number, t: any) => sum + (t.total_amount || 0), 0) || 0
+          const customerCount = transactions.length || 0
 
           return {
             id: branch.id,
@@ -344,6 +369,7 @@ export default function BranchManagement() {
             address: branch.address || "",
             phone: branch.phone || "",
             manager: managerName,
+            manager_id: branch.manager_id || "",
             employees: employeeCount || 0,
             status: branch.status as "active" | "inactive" | "maintenance",
             revenue: `Rp ${revenue.toLocaleString("id-ID")}`,
@@ -436,7 +462,6 @@ export default function BranchManagement() {
             name: newBranch.name,
             address: newBranch.address,
             phone: newBranch.phone,
-            manager_name: newBranch.manager,
             status: "active",
           },
         ])
@@ -488,6 +513,9 @@ export default function BranchManagement() {
 
   const handleEditBranch = (branch: Branch) => {
     setSelectedBranch(branch)
+    // Convert manager_id (number) ke string untuk Select component
+    const managerId = branch.manager_id ? String(branch.manager_id) : "none";
+    setSelectedManagerId(managerId)
     setIsEditDialogOpen(true)
   }
 
@@ -588,40 +616,22 @@ export default function BranchManagement() {
     }
 
     try {
-      const currentBranch = branches.find((b) => b.id === branchId)
-      const currentShifts = currentBranch?.shifts || []
+      console.log("[v0] Adding new shift to branch_shifts table...")
 
-      const newShiftData: Shift = {
-        id: crypto.randomUUID(),
-        name: newShift.name,
-        startTime: newShift.startTime || "09:00",
-        endTime: newShift.endTime || "17:00",
-        days: newShift.days || [],
-        currentEmployees: 0,
-        status: 'active',
-        breakTimes: newShift.breakTimes || [],
-        minStaff: 1,
-      }
-
-      const updatedShifts = [...currentShifts, newShiftData]
-
-      // Update shifts column in branches table
-      const { error } = await supabase
-        .from("branches")
-        .update({
-          shifts: updatedShifts.map((shift) => ({
-            id: shift.id,
-            name: shift.name,
-            start_time: shift.startTime,
-            end_time: shift.endTime,
-            days: shift.days,
-            current_employees: shift.currentEmployees,
-            is_active: shift.status === 'active',
-            break_times: shift.breakTimes,
-            min_staff: shift.minStaff,
-          })),
-        })
-        .eq("id", branchId)
+      // Insert shift ke tabel branch_shifts dengan kolom yang sesuai
+      const { data, error } = await supabase
+        .from("branch_shifts")
+        .insert([
+          {
+            branch_id: branchId,
+            shift_name: newShift.name,
+            shift_type: newShift.days.join(','), // Simpan days sebagai comma-separated string
+            start_time: newShift.startTime || "09:00",
+            end_time: newShift.endTime || "17:00",
+            is_active: true,
+          },
+        ])
+        .select()
 
       if (error) {
         console.error("[v0] Error adding shift:", error)
@@ -629,10 +639,8 @@ export default function BranchManagement() {
         return
       }
 
-      console.log("[v0] Shift added successfully:", newShiftData)
-
-      // Update local state
-      setBranches(branches.map((branch) => (branch.id === branchId ? { ...branch, shifts: updatedShifts } : branch)))
+      console.log("[v0] Shift added successfully:", data)
+      toast.success("Shift berhasil ditambahkan")
 
       // Reset form
       setNewShift({
@@ -645,7 +653,9 @@ export default function BranchManagement() {
         status: 'active',
       })
       setIsShiftDialogOpen(false)
-      toast.success("Shift berhasil ditambahkan")
+
+      // Refresh data
+      await fetchBranches()
     } catch (error) {
       console.error("[v0] Error adding shift:", error)
       toast.error("Gagal menambahkan shift")
@@ -687,10 +697,10 @@ export default function BranchManagement() {
 
     const service: Service = {
       id: Date.now().toString(),
-      name: newService.name,
+      name: newService.name || "",
       price: newService.price || 0,
       duration: newService.duration || 30,
-      status: 'active',
+      aktif: true,
       category: newService.category || "haircut",
     }
 
@@ -704,7 +714,7 @@ export default function BranchManagement() {
       name: "",
       price: 0,
       duration: 30,
-      status: 'active',
+      aktif: true,
       category: "haircut",
     })
     setIsServiceDialogOpen(false)
@@ -813,27 +823,32 @@ export default function BranchManagement() {
     try {
       console.log("[v0] Updating shift in database...")
 
-      const updatedShift = {
+      const updatedShift: Shift = {
         id: editingShift.id,
         name: newShift.name,
         startTime: newShift.startTime || "09:00",
         endTime: newShift.endTime || "17:00",
         days: newShift.days || [],
-        breakTimes: newShift.breakTimes || [],
-        hasBreakTime: newShift.hasBreakTime || false,
+        maxEmployees: editingShift.maxEmployees || 10,
+        currentEmployees: editingShift.currentEmployees || 0,
         status: 'active',
+        breakTimes: newShift.breakTimes || [],
+        minStaff: editingShift.minStaff || 1,
+        hasBreakTime: newShift.hasBreakTime || false,
       }
 
-      // Update shifts array in branches table
-      const currentBranch = branches.find((b) => b.id === branchId)
-      if (!currentBranch) {
-        toast.error("Cabang tidak ditemukan")
-        return
-      }
-
-      const updatedShifts = currentBranch.shifts.map((shift) => (shift.id === editingShift.id ? updatedShift : shift))
-
-      const { error } = await supabase.from("branches").update({ shifts: updatedShifts }).eq("id", branchId)
+      // Update shift di tabel branch_shifts dengan kolom yang sesuai
+      const { error } = await supabase
+        .from("branch_shifts")
+        .update({
+          shift_name: updatedShift.name,
+          shift_type: updatedShift.days.join(','),
+          start_time: updatedShift.startTime,
+          end_time: updatedShift.endTime,
+          is_active: updatedShift.status === 'active',
+        })
+        .eq("id", editingShift.id)
+        .eq("branch_id", branchId)
 
       if (error) {
         console.error("[v0] Error updating shift:", error)
@@ -842,9 +857,7 @@ export default function BranchManagement() {
       }
 
       console.log("[v0] Shift updated successfully")
-
-      // Update local state
-      setBranches(branches.map((branch) => (branch.id === branchId ? { ...branch, shifts: updatedShifts } : branch)))
+      toast.success("Shift berhasil diperbarui")
 
       setEditingShift(null)
       setNewShift({
@@ -857,7 +870,9 @@ export default function BranchManagement() {
         status: 'active',
       })
       setIsEditShiftDialogOpen(false)
-      toast.success("Shift berhasil diperbarui")
+
+      // Refresh data
+      await fetchBranches()
     } catch (err) {
       console.error("[v0] Error in handleSaveEditShift:", err)
       toast.error("Terjadi kesalahan saat mengupdate shift")
@@ -869,15 +884,12 @@ export default function BranchManagement() {
       try {
         console.log("[v0] Deleting shift from database...")
 
-        const currentBranch = branches.find((b) => b.id === branchId)
-        if (!currentBranch) {
-          toast.error("Cabang tidak ditemukan")
-          return
-        }
-
-        const updatedShifts = currentBranch.shifts.filter((shift) => shift.id !== shiftId)
-
-        const { error } = await supabase.from("branches").update({ shifts: updatedShifts }).eq("id", branchId)
+        // Delete shift dari tabel branch_shifts
+        const { error } = await supabase
+          .from("branch_shifts")
+          .delete()
+          .eq("id", shiftId)
+          .eq("branch_id", branchId)
 
         if (error) {
           console.error("[v0] Error deleting shift:", error)
@@ -886,10 +898,10 @@ export default function BranchManagement() {
         }
 
         console.log("[v0] Shift deleted successfully")
-
-        // Update local state
-        setBranches(branches.map((branch) => (branch.id === branchId ? { ...branch, shifts: updatedShifts } : branch)))
         toast.success("Shift berhasil dihapus")
+
+        // Refresh data
+        await fetchBranches()
       } catch (err) {
         console.error("[v0] Error in handleDeleteShift:", err)
         toast.error("Terjadi kesalahan saat menghapus shift")
@@ -930,12 +942,28 @@ export default function BranchManagement() {
     try {
       setIsUpdating(true)
       console.log("[v0] Updating branch in database...")
+      console.log("[v0] Selected Manager ID:", selectedManagerId)
+      
+      // Convert manager_id dengan benar - sekarang INTEGER bukan UUID
+      let managerId: number | null = null;
+      if (selectedManagerId && selectedManagerId !== "none") {
+        const managerIdStr = String(selectedManagerId).trim();
+        if (managerIdStr !== "" && managerIdStr !== "none") {
+          // Parse ke integer
+          managerId = parseInt(managerIdStr, 10);
+          if (isNaN(managerId)) {
+            toast.error("ID Manager tidak valid");
+            return;
+          }
+        }
+      }
+      
       const updateData = {
         name: selectedBranch.name,
         address: selectedBranch.address,
         phone: selectedBranch.phone,
         status: selectedBranch.status,
-        manager_name: selectedBranch.manager_name || null,
+        manager_id: managerId,
         operating_hours: {
           open: selectedBranch.openTime || "09:00",
           close: selectedBranch.closeTime || "21:00",
@@ -943,28 +971,20 @@ export default function BranchManagement() {
       }
       console.log("[v0] Update data being sent:", updateData)
 
-      const { error } = await supabase.from("branches").update(updateData).eq("id", selectedBranch.id)
+      const { error, data } = await supabase
+        .from("branches")
+        .update(updateData)
+        .eq("id", selectedBranch.id)
+        .select()
 
       if (error) {
         console.error("[v0] Error updating branch:", error)
-        toast.error("Gagal mengupdate cabang")
+        console.error("[v0] Error details:", JSON.stringify(error, null, 2))
+        toast.error(`Gagal mengupdate cabang: ${error.message || 'Unknown error'}`)
         return
       }
 
-      console.log("[v0] Branch updated successfully")
-
-      setBranches(
-        branches.map((branch) =>
-          branch.id === selectedBranch.id
-            ? {
-              ...branch,
-              ...updateData,
-              openTime: selectedBranch.openTime,
-              closeTime: selectedBranch.closeTime,
-            }
-            : branch,
-        ),
-      )
+      console.log("[v0] Branch updated successfully:", data)
 
       await fetchBranches()
 
@@ -1049,7 +1069,7 @@ export default function BranchManagement() {
         // Calculate revenue (you can modify this logic based on your needs)
         const { data: transactions } = await supabase
           .from("transactions")
-          .select("total")
+          .select("total_amount")
           .eq("branch_id", branch.id)
 
         const revenue = transactions?.reduce((sum, t) => sum + (t.total_amount || 0), 0) || 0
@@ -2126,11 +2146,25 @@ export default function BranchManagement() {
                   </div>
                   <div className="space-y-2">
                     <Label>Manager</Label>
-                    <Input
-                      value={selectedBranch.manager_name || ""}
-                      onChange={(e) => setSelectedBranch({ ...selectedBranch, manager_name: e.target.value })}
-                      placeholder="Nama manager cabang"
-                    />
+                    <Select
+                      value={String(selectedManagerId || "none")}
+                      onValueChange={(value) => setSelectedManagerId(value === "none" ? "" : String(value))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pilih manager" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Belum ada manager</SelectItem>
+                        {availableManagers.map((manager) => (
+                          <SelectItem key={manager.id} value={String(manager.id)}>
+                            {manager.name} - {manager.position || manager.role || 'Staff'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Semua karyawan bisa dipilih sebagai manager (fleksibel)
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label>Nomor Telepon</Label>
@@ -2150,7 +2184,7 @@ export default function BranchManagement() {
                     <Label>Status</Label>
                     <Select
                       value={selectedBranch.status}
-                      onChange={(e) => setSelectedBranch({ ...selectedBranch, status: e.target.value })}
+                      onValueChange={(value) => setSelectedBranch({ ...selectedBranch, status: value as any })}
                     >
                       <SelectTrigger>
                         <SelectValue />

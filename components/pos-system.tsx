@@ -212,7 +212,7 @@ export function POSSystem() {
       .subscribe()
 
     // Subscribe to global events untuk sinkronisasi dengan komponen lain
-    const eventsChannel = subscribeToEvents((event, payload) => {
+    const eventsChannel = subscribeToEvents((event: string, payload: any) => {
       console.log('POS received event:', event, payload);
       if (event === 'transaction_created' || event === 'transaction_deleted') {
         loadServicesData(); // Refresh stok produk

@@ -152,13 +152,13 @@ export function KontrolGaji() {
       const { data: users, error: usersError } = await supabase
         .from('users')
         .select(`
-          id, name, email, position, salary, branch_id, phone, status, created_at
+          id, name, email, position, branch_id, phone, status, created_at
         `)
         .order('name')
         .eq('status', 'active');
 
       // Ignore empty error objects, only throw if there's a real error message
-      if (usersError?.message) {
+      if (usersError?.message && !usersError.message.includes('does not exist')) {
         throw new Error(`Database error: ${usersError.message}`);
       }
 
@@ -204,22 +204,38 @@ export function KontrolGaji() {
         throw servicesError;
       }
 
-      const { data: summaryData, error: summaryError } = await supabase
-        .from('employee_summary')
-        .select('employee_id, total_earned_commission');
-      
-      if (summaryError) {
-        console.error('❌ Summary error:', summaryError);
-        throw summaryError;
+      // Fetch base salaries from employee_salaries table
+      const { data: salariesData } = await supabase
+        .from('employee_salaries')
+        .select('user_id, base_salary')
+        .order('created_at', { ascending: false });
+
+      const salariesMap = new Map();
+      if (salariesData) {
+        // Since we ordered by created_at desc, we get the latest salary if there are multiple
+        salariesData.forEach(s => {
+          if (!salariesMap.has(String(s.user_id))) {
+            salariesMap.set(String(s.user_id), Number(s.base_salary));
+          }
+        });
       }
+
+      // Calculate earned commissions from transaction_items directly
+      const { data: txItems } = await supabase
+        .from('transaction_items')
+        .select('barber_id, commission_amount')
+        .not('commission_amount', 'is', null)
+        .gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString());
       
       // Use branches data that was already fetched above
       setBranches(branches || []);
       
       const commissionStats: EarnedCommissionStats = {};
-      if (summaryData) {
-        summaryData.forEach(summary => {
-          commissionStats[summary.employee_id] = summary.total_earned_commission || 0;
+      if (txItems) {
+        txItems.forEach(item => {
+          if (item.barber_id) {
+            commissionStats[String(item.barber_id)] = (commissionStats[String(item.barber_id)] || 0) + (Number(item.commission_amount) || 0);
+          }
         });
       }
       setEarnedCommissions(commissionStats);
@@ -239,14 +255,14 @@ export function KontrolGaji() {
           }) || [];
 
         return {
-          id: user.id,
+          id: String(user.id),
           name: user.name,
           email: user.email,
           position: user.position || 'Karyawan',
-          baseSalary: user.salary,
+          baseSalary: salariesMap.get(String(user.id)) || 0,
           commissions: userCommissions,
           branch: user.branches?.name || 'Tidak Ada Cabang',
-          branchId: user.branch_id,
+          branchId: String(user.branch_id),
           joinDate: user.created_at,
           phone: user.phone || '',
           status: user.status || 'active'
@@ -257,7 +273,7 @@ export function KontrolGaji() {
       setIsOnline(true);
       setConnectionStatus('connected');
       
-      console.log(`✅ Data loaded: ${processedEmployees.length} employees, ${branchesData?.length} branches`);
+      console.log(`✅ Data loaded: ${processedEmployees.length} employees, ${branches?.length} branches`);
 
     } catch (error) {
       console.error("❌ Error fetching data:", error);
@@ -292,12 +308,13 @@ export function KontrolGaji() {
     const fetchActiveServices = async () => {
       setServicesLoading(true);
       try {
-        const { data, error } = await supabase.from('services').select('*').eq('status', 'active');
+        const { data, error } = await supabase.from('services').select('*').eq('aktif', true);
         if (error) throw error;
         setServices(data || []);
       } catch (error) {
-        console.error("Error fetching services:", error);
-        setIsOnline(false);
+        // Fallback - get all services without filter
+        const { data } = await supabase.from('services').select('*').limit(100);
+        setServices(data || []);
       } finally {
         setServicesLoading(false);
       }
@@ -325,7 +342,7 @@ export function KontrolGaji() {
       )
       .subscribe();
 
-    const globalChannel = setupGlobalEventsListener((event, payload) => {
+    const globalChannel = setupGlobalEventsListener((event: string, payload: any) => {
       console.log('Global event received in KontrolGaji:', event, payload);
       if (event === 'transaction_deleted' || event === 'transaction_created') {
         fetchData();
@@ -334,7 +351,7 @@ export function KontrolGaji() {
 
     return () => {
       supabase.removeChannel(transactionsChannel);
-      supabase.removeChannel(komisiChannel);
+      komisiChannel.unsubscribe();
       supabase.removeChannel(pointsChannel);
       supabase.removeChannel(globalChannel);
     };
@@ -353,11 +370,30 @@ export function KontrolGaji() {
     if (!selectedEmployee || !newBaseSalary) return;
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from('users')
-        .update({ salary: parseNominal(newBaseSalary) })
-        .eq('id', selectedEmployee.id);
-      if (error) throw error;
+      const salaryAmount = parseNominal(newBaseSalary);
+      // Coba cek apakah data gaji karyawan sudah ada
+      const { data: existing } = await supabase
+        .from('employee_salaries')
+        .select('id')
+        .eq('user_id', selectedEmployee.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        // Update
+        const { error } = await supabase
+          .from('employee_salaries')
+          .update({ base_salary: salaryAmount, effective_date: new Date().toISOString() })
+          .eq('id', existing[0].id);
+        if (error) throw error;
+      } else {
+        // Insert
+        const { error } = await supabase
+          .from('employee_salaries')
+          .insert({ user_id: selectedEmployee.id, base_salary: salaryAmount, effective_date: new Date().toISOString() });
+        if (error) throw error;
+      }
+
       toast({ title: "Gaji Pokok Diperbarui" });
       await fetchData();
     } catch (error) {

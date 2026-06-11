@@ -6,8 +6,8 @@ import { ChevronRight } from "lucide-react"
 
 interface User {
   name?: string
-  email: string
-  position: string
+  email?: string
+  position?: string
   [key: string]: any
 }
 

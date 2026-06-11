@@ -58,7 +58,7 @@ export function FinancialReports() {
     { service: "Keramas", revenue: 7000000, percentage: 11 },
   ]
 
-  const formatPrice = (price: number) => {
+  const formatPrice = (price: number): string => {
     return new Intl.NumberFormat("id-ID", {
       style: "currency",
       currency: "IDR",
@@ -187,7 +187,7 @@ export function FinancialReports() {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="month" />
                     <YAxis tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`} />
-                    <Tooltip formatter={(value) => formatPrice(Number(value))} />
+                    <Tooltip formatter={(value) => formatPrice(Number(value || 0))} />
                     <Bar dataKey="revenue" fill="#E53E3E" name="Pendapatan" />
                     <Bar dataKey="profit" fill="#38A169" name="Keuntungan" />
                   </BarChart>
@@ -209,7 +209,7 @@ export function FinancialReports() {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="month" />
                     <YAxis tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`} />
-                    <Tooltip formatter={(value) => formatPrice(Number(value))} />
+                    <Tooltip formatter={(value) => formatPrice(Number(value || 0))} />
                     <Line
                       type="monotone"
                       dataKey="revenue"
@@ -249,7 +249,7 @@ export function FinancialReports() {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="branch" />
                     <YAxis tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`} />
-                    <Tooltip formatter={(value) => formatPrice(Number(value))} />
+                    <Tooltip formatter={(value) => formatPrice(Number(value || 0))} />
                     <Bar dataKey="revenue" fill="#E53E3E" name="Pendapatan" />
                     <Bar dataKey="profit" fill="#38A169" name="Keuntungan" />
                   </BarChart>
@@ -313,11 +313,11 @@ export function FinancialReports() {
                       dataKey="revenue"
                       label={({ name, percentage }) => `${name} ${percentage}%`}
                     >
-                      {serviceRevenue.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={`hsl(${index * 45}, 70%, 50%)`} />
+                      {serviceRevenue.map((entry) => (
+                        <Cell key={`cell-${entry.service}`} fill={`hsl(${serviceRevenue.indexOf(entry) * 45}, 70%, 50%)`} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value) => formatPrice(Number(value))} />
+                    <Tooltip formatter={(value) => formatPrice(Number(value || 0))} />
                   </PieChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -370,13 +370,13 @@ export function FinancialReports() {
                       outerRadius={100}
                       fill="#8884d8"
                       dataKey="value"
-                      label={({ name, value }) => `${name}: ${formatPrice(value)}`}
+                      label={({ name, value }) => `${name}: ${formatPrice(Number(value || 0))}`}
                     >
-                      {expenseBreakdown.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      {expenseBreakdown.map((entry) => (
+                        <Cell key={`cell-${entry.name}`} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value) => formatPrice(Number(value))} />
+                    <Tooltip formatter={(value) => formatPrice(Number(value || 0))} />
                   </PieChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -389,7 +389,7 @@ export function FinancialReports() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {expenseBreakdown.map((expense, index) => {
+                  {expenseBreakdown.map((expense) => {
                     const percentage = (expense.value / expenseBreakdown.reduce((sum, e) => sum + e.value, 0)) * 100
                     return (
                       <div key={expense.name} className="flex items-center justify-between p-3 border rounded-lg">

@@ -7,8 +7,11 @@ import Image from "next/image"
 import { LayoutDashboard, ShoppingCart, Camera, TrendingDown, LogOut, ChevronLeft, ChevronRight, Users, CreditCard, X } from "lucide-react"
 
 interface User {
-  email: string
-  position: string
+  email?: string
+  position?: string
+  name?: string
+  role?: string
+  [key: string]: any
 }
 
 interface SidebarProps {

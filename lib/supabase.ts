@@ -111,21 +111,35 @@ export interface Transaction {
   payment_status?: string
   notes?: string
   created_at: string
+  // Extended properties for UI
+  cashier?: { name: string }
+  server?: { name: string }
+  branch?: { name: string }
+  transaction_items?: TransactionItem[]
 }
 
 export interface TransactionItem {
   id: string
   transaction_id: string
   service_id: string
+  service_name?: string
+  service_type?: string
+  service_category?: string
   quantity: number
   unit_price: number
   total_price: number
   commission_status?: string
-  commission_type?: string
+  commission_type?: 'percentage' | 'fixed'
   commission_value?: number
   commission_amount?: number
-  barber_id?: string
+  barber_id?: number
   created_at: string
+  // Extended properties for UI
+  service?: {
+    name: string
+    price: number
+  }
+  has_commission?: boolean
 }
 
 export interface Attendance {
@@ -838,55 +852,248 @@ export async function getEmployees(branchId?: string) {
 }
 
 export async function getOutletStock() {
-  return { data: [], error: null }
+  try {
+    const { data, error } = await supabase
+      .from('services')
+      .select('*')
+      .eq('type', 'product')
+      .order('name')
+    if (error) throw error
+    return { data: data || [], error: null }
+  } catch (error: any) {
+    return { data: [], error }
+  }
 }
 
 export async function getLowStockAlerts() {
-  return { data: [], error: null }
+  try {
+    const { data, error } = await supabase
+      .from('services')
+      .select('*')
+      .eq('type', 'product')
+      .lt('stock', 10)
+      .order('stock', { ascending: true })
+    if (error) throw error
+    return { data: data || [], error: null }
+  } catch (error: any) {
+    return { data: [], error }
+  }
 }
 
 export async function updateOutletStock(id: string, stock: number) {
-  return { data: null, error: null }
+  try {
+    const { data, error } = await supabase
+      .from('services')
+      .update({ stock })
+      .eq('id', id)
+      .select()
+      .single()
+    if (error) throw error
+    return { data, error: null }
+  } catch (error: any) {
+    return { data: null, error }
+  }
 }
 
 export async function getEmployeeAbsenceInfo(userId: string) {
-  return { data: null, error: null }
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('max_absent_days, current_absent_days')
+      .eq('id', userId)
+      .single()
+    if (error) throw error
+    const maxAbsentDays = data.max_absent_days || 4
+    const currentAbsentDays = data.current_absent_days || 0
+    return {
+      maxAbsentDays,
+      currentAbsentDays,
+      remainingDays: maxAbsentDays - currentAbsentDays,
+      excessDays: Math.max(0, currentAbsentDays - maxAbsentDays)
+    }
+  } catch (error) {
+    return {
+      maxAbsentDays: 4,
+      currentAbsentDays: 0,
+      remainingDays: 4,
+      excessDays: 0
+    }
+  }
 }
 
 export async function updateMaxAbsentDays(userId: string, days: number) {
-  return { data: null, error: null }
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .update({ max_absent_days: days })
+      .eq('id', userId)
+      .select()
+      .single()
+    if (error) throw error
+    return { data, error: null }
+  } catch (error: any) {
+    return { data: null, error }
+  }
 }
 
 export async function getAbsentEmployeesToday(branchId?: string) {
-  return { data: [], error: null }
+  try {
+    const today = new Date().toISOString().split('T')[0]
+    
+    // Get all attendances today
+    const { data: attendances } = await supabase
+      .from('attendance')
+      .select('user_id')
+      .eq('date', today)
+      
+    const presentUserIds = (attendances || []).map(a => a.user_id)
+    
+    // Get users not in presentUserIds
+    let query = supabase.from('users').select('*').eq('status', 'active')
+    if (branchId && branchId !== 'all') {
+      query = query.eq('branch_id', branchId)
+    }
+    const { data: allActiveUsers } = await query
+    
+    const absentUsers = (allActiveUsers || []).filter(u => !presentUserIds.includes(u.id))
+    return absentUsers
+  } catch (error) {
+    return []
+  }
 }
 
 export async function getEmployeeStats(userId: string) {
-  return { data: null, error: null }
+  try {
+    const { data: items } = await supabase
+      .from('transaction_items')
+      .select('unit_price, quantity, commission_amount')
+      .eq('barber_id', userId)
+      
+    const totalTransactions = items?.length || 0
+    let totalRevenue = 0
+    let totalCommission = 0
+    items?.forEach(item => {
+      totalRevenue += (Number(item.unit_price) * Number(item.quantity)) || 0
+      totalCommission += Number(item.commission_amount) || 0
+    })
+    
+    const { data: points } = await supabase
+      .from('points')
+      .select('points_earned, points_type')
+      .eq('user_id', userId)
+      
+    let bonusPoints = 0
+    let penaltyPoints = 0
+    points?.forEach(p => {
+      if (p.points_earned > 0) bonusPoints += p.points_earned
+      else penaltyPoints += Math.abs(p.points_earned)
+    })
+    
+    return {
+      totalTransactions,
+      totalRevenue,
+      totalCommission,
+      averageTransaction: totalTransactions > 0 ? totalRevenue / totalTransactions : 0,
+      bonusPoints,
+      penaltyPoints,
+      totalBonus: bonusPoints * 1000,
+      totalPenalty: penaltyPoints * 1000
+    }
+  } catch (error) {
+    return null
+  }
 }
 
 export async function getEmployeeCommissions(userId: string) {
-  return { data: [], error: null }
+  try {
+    const { data, error } = await supabase
+      .from('commission_rules')
+      .select('*')
+      .eq('user_id', userId)
+    if (error) throw error
+    return { data: data || [], error: null }
+  } catch (error: any) {
+    return { data: [], error }
+  }
 }
 
 export async function getEmployeeAttendance(userId: string) {
-  return { data: [], error: null }
+  try {
+    const { data, error } = await supabase
+      .from('attendance')
+      .select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+    if (error) throw error
+    
+    const presentDays = data?.filter(a => a.status === 'present').length || 0
+    const lateDays = data?.filter(a => a.status === 'late').length || 0
+    const totalDays = data?.length || 0
+    const attendanceRate = totalDays > 0 ? ((presentDays + lateDays) / totalDays) * 100 : 100
+    
+    return { 
+      data: data || [], 
+      presentDays,
+      lateDays,
+      attendanceRate,
+      overtimeHours: 0,
+      error: null 
+    }
+  } catch (error: any) {
+    return { data: [], error }
+  }
 }
 
 export function setupEmployeeRealtime(callback: any) {
-  return { unsubscribe: () => {} }
+  return supabase
+    .channel('users-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, callback)
+    .subscribe()
 }
 
 export async function addEmployee(data: any) {
-  return { data: null, error: null }
+  try {
+    const { data: newEmp, error } = await supabase
+      .from('users')
+      .insert([data])
+      .select()
+      .single()
+    if (error) throw error
+    return { data: newEmp, error: null }
+  } catch (error: any) {
+    console.error('[addEmployee] Error:', error)
+    return { data: null, error }
+  }
 }
 
 export async function updateEmployee(id: string, data: any) {
-  return { data: null, error: null }
+  try {
+    const { data: updatedEmp, error } = await supabase
+      .from('users')
+      .update(data)
+      .eq('id', id)
+      .select()
+      .single()
+    if (error) throw error
+    return { data: updatedEmp, error: null }
+  } catch (error: any) {
+    console.error('[updateEmployee] Error:', error)
+    return { data: null, error }
+  }
 }
 
 export async function deleteEmployee(id: string) {
-  return { data: null, error: null }
+  try {
+    const { error } = await supabase
+      .from('users')
+      .delete()
+      .eq('id', id)
+    if (error) throw error
+    return { data: true, error: null }
+  } catch (error: any) {
+    console.error('[deleteEmployee] Error:', error)
+    return { data: null, error }
+  }
 }
 
 export async function getKasbonRequests(branchId?: string) {
