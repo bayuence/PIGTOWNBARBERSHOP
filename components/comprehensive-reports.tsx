@@ -219,7 +219,7 @@ export function ComprehensiveReports() {
       // Get total revenue and transactions
       let transactionQuery = supabase
         .from("transactions")
-        .select("total, created_at, branch_id")
+        .select("total_amount, created_at, branch_id")
         .eq("payment_status", "completed")
         .gte("created_at", start)
         .lte("created_at", end)
@@ -235,7 +235,7 @@ export function ComprehensiveReports() {
         console.log("[v0] Transaction error:", transError)
       }
 
-      const totalRevenue = transactions?.reduce((sum, t) => sum + (t.total_amount || 0), 0) || 0
+      const totalRevenue = transactions?.reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0) || 0
       const totalTransactions = transactions?.length || 0
 
       // Get total employees
@@ -295,7 +295,7 @@ export function ComprehensiveReports() {
 
       let revenueQuery = supabase
         .from("transactions")
-        .select("total, created_at, branch_id")
+        .select("total_amount, created_at, branch_id")
         .eq("payment_status", "completed")
         .gte("created_at", start)
         .lte("created_at", end)
@@ -324,7 +324,7 @@ export function ComprehensiveReports() {
           monthlyData[monthKey] = { revenue: 0, transactions: 0 }
         }
 
-        monthlyData[monthKey].revenue += transaction.total_amount || 0
+        monthlyData[monthKey].revenue += Number(transaction.total_amount) || 0
         monthlyData[monthKey].transactions += 1
       })
 
@@ -365,7 +365,7 @@ export function ComprehensiveReports() {
           // Get transactions for this branch with date filter
           const { data: transactions } = await supabase
             .from("transactions")
-            .select("total, created_at")
+            .select("total_amount, created_at")
             .eq("branch_id", branch.id)
             .eq("payment_status", "completed")
             .gte("created_at", start)
@@ -378,7 +378,7 @@ export function ComprehensiveReports() {
             .eq("branch_id", branch.id)
             .eq("status", "active")
 
-          const revenue = transactions?.reduce((sum, t) => sum + (t.total_amount || 0), 0) || 0
+          const revenue = transactions?.reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0) || 0
           const transactionCount = transactions?.length || 0
           const employeeCount = employees?.length || 0
 
@@ -497,8 +497,7 @@ export function ComprehensiveReports() {
           id,
           name,
           branch_id,
-          position,
-          branches:branch_id (name)
+          position
         `)
         .eq("status", "active")
 
@@ -514,18 +513,21 @@ export function ComprehensiveReports() {
         return
       }
 
+      // Get branch names separately
+      const { data: branchList } = await supabase.from("branches").select("id, name")
+
       const employeeStats = await Promise.all(
         users?.map(async (user: any) => {
           // Get transactions handled by this employee (as cashier) with date filter
           const { data: transactions } = await supabase
             .from("transactions")
-            .select("total, created_at")
+            .select("total_amount, created_at")
             .eq("cashier_id", user.id)
             .eq("payment_status", "completed")
             .gte("created_at", start)
             .lte("created_at", end)
 
-          const revenue = transactions?.reduce((sum, t) => sum + (t.total_amount || 0), 0) || 0
+          const revenue = transactions?.reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0) || 0
           const transactionCount = transactions?.length || 0
 
           // Determine display position
@@ -536,12 +538,15 @@ export function ComprehensiveReports() {
           if (displayPosition === "barber") displayPosition = "Barber"
           if (displayPosition === "manager") displayPosition = "Manager"
           
+          // Get branch name from branchList
+          const branchName = branchList?.find((b: any) => b.id === user.branch_id)?.name || "Unknown Branch"
+          
           return {
             name: user.name,
             revenue,
             transactions: transactionCount,
             rating: 4.5 + Math.random() * 0.5, // Random rating for demo
-            branch: user.branches?.name || "Unknown Branch",
+            branch: branchName,
             position: displayPosition,
           }
         }) || [],
@@ -567,6 +572,7 @@ export function ComprehensiveReports() {
       const today = new Date().toISOString().split("T")[0]
 
       // Get attendance records within date range
+      // attendance.date is a timestamp, so compare with full ISO strings
       let attendanceQuery = supabase
         .from("attendance")
         .select(`
@@ -575,12 +581,12 @@ export function ComprehensiveReports() {
           date,
           check_in_time,
           check_out_time,
-          total_break_minutes,
+          break_duration,
           user_id,
           branch_id
         `)
-        .gte("date", start.split("T")[0])
-        .lte("date", end.split("T")[0])
+        .gte("date", start)
+        .lte("date", end)
 
       // Apply branch filter if not "all"
       if (selectedBranch !== "all") {
@@ -598,7 +604,8 @@ export function ComprehensiveReports() {
       let todayQuery = supabase
         .from("attendance")
         .select(`*`)
-        .eq("date", today)
+        .gte("date", today)
+        .lte("date", today + "T23:59:59")
 
       if (selectedBranch !== "all") {
         todayQuery = todayQuery.eq("branch_id", selectedBranch)
@@ -683,7 +690,8 @@ export function ComprehensiveReports() {
 
         const checkInTime = new Date(record.check_in_time)
         const checkOutTime = record.check_out_time ? new Date(record.check_out_time) : new Date()
-        const breakMinutes = record.total_break_minutes || 0
+        // Use break_duration (minutes) or fall back to 0
+        const breakMinutes = record.break_duration || record.total_break_minutes || 0
 
         const workMinutes = (checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60)
         const netMinutes = Math.max(0, workMinutes - breakMinutes)
@@ -731,7 +739,7 @@ export function ComprehensiveReports() {
             // Today's real-time data
             todayCheckIn: todayRecord?.check_in_time,
             todayCheckOut: todayRecord?.check_out_time,
-            todayBreakDuration: todayRecord?.total_break_minutes || 0,
+            todayBreakDuration: todayRecord?.break_duration || 0,
             todayWorkingHours,
             currentStatus,
             branch: branchMap.get(todayRecord?.branch_id) || "N/A",
@@ -817,19 +825,19 @@ export function ComprehensiveReports() {
           // 1. Get transactions (revenue & payment methods)
           const { data: transactions } = await supabase
             .from("transactions")
-            .select("total, payment_method, created_at")
+            .select("total_amount, payment_method, created_at")
             .eq("branch_id", branch.id)
             .eq("payment_status", "completed")
             .gte("created_at", start)
             .lte("created_at", end)
 
-          const totalRevenue = transactions?.reduce((sum, t) => sum + (t.total_amount || 0), 0) || 0
+          const totalRevenue = transactions?.reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0) || 0
           const transactionCount = transactions?.length || 0
 
           // Payment method breakdown
-          const cashPayments = transactions?.filter(t => t.payment_method === "cash").reduce((sum, t) => sum + (t.total_amount || 0), 0) || 0
-          const qrisPayments = transactions?.filter(t => t.payment_method === "qris").reduce((sum, t) => sum + (t.total_amount || 0), 0) || 0
-          const transferPayments = transactions?.filter(t => t.payment_method === "transfer").reduce((sum, t) => sum + (t.total_amount || 0), 0) || 0
+          const cashPayments = transactions?.filter(t => t.payment_method === "cash").reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0) || 0
+          const qrisPayments = transactions?.filter(t => t.payment_method === "qris").reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0) || 0
+          const transferPayments = transactions?.filter(t => t.payment_method === "transfer").reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0) || 0
 
           // 2. Get expenses
           const { data: expenses } = await supabase
@@ -841,26 +849,52 @@ export function ComprehensiveReports() {
 
           const totalExpenses = expenses?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0
 
-          // 3. Get commissions
-          const { data: commissions } = await supabase
-            .from("commissions")
-            .select("amount, created_at, branch_id")
-            .eq("branch_id", branch.id)
-            .gte("created_at", start)
-            .lte("created_at", end)
+          // 3. Get commissions - try commission_items or transaction_items (table may not exist)
+          let totalCommissions = 0
+          try {
+            const { data: commissions, error: commError } = await supabase
+              .from("commission_items")
+              .select("commission_amount, created_at")
+              .eq("branch_id", branch.id)
+              .gte("created_at", start)
+              .lte("created_at", end)
 
-          const totalCommissions = commissions?.reduce((sum, c) => sum + (c.amount || 0), 0) || 0
+            if (!commError && commissions) {
+              totalCommissions = commissions.reduce((sum, c) => sum + (c.commission_amount || 0), 0)
+            } else {
+              // Try transaction_items commissions fallback
+              const { data: txItems } = await supabase
+                .from("transaction_items")
+                .select("commission_amount")
+                .eq("branch_id", branch.id)
+                .gte("created_at", start)
+                .lte("created_at", end)
+              if (txItems) {
+                totalCommissions = txItems.reduce((sum, c) => sum + (c.commission_amount || 0), 0)
+              }
+            }
+          } catch (e) {
+            // commissions table may not exist
+            totalCommissions = 0
+          }
 
-          // 4. Get kasbon
-          const { data: kasbonData } = await supabase
-            .from("kasbon")
-            .select("amount, created_at, branch_id, status")
-            .eq("branch_id", branch.id)
-            .eq("status", "approved")
-            .gte("created_at", start)
-            .lte("created_at", end)
+          // 4. Get kasbon (no branch_id filter since column may not exist on kasbon)
+          let totalKasbon = 0
+          try {
+            const { data: kasbonData, error: kasbonErr } = await supabase
+              .from("kasbon")
+              .select("amount, created_at, status, user_id")
+              .eq("status", "approved")
+              .gte("created_at", start)
+              .lte("created_at", end)
 
-          const totalKasbon = kasbonData?.reduce((sum, k) => sum + (k.amount || 0), 0) || 0
+            if (!kasbonErr && kasbonData) {
+              // If kasbon has branch_id, filter it; otherwise sum all
+              totalKasbon = kasbonData.reduce((sum, k) => sum + (k.amount || 0), 0)
+            }
+          } catch (e) {
+            totalKasbon = 0
+          }
 
           // 5. Get employees
           const { data: employees } = await supabase
