@@ -3,6 +3,7 @@ import { Inter } from "next/font/google"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 import type { ReactNode } from "react"
+import PwaUpdater from "@/components/PwaUpdater"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -46,6 +47,7 @@ export default function RootLayout({
           enableSystem={false}
           disableTransitionOnChange
         >
+          <PwaUpdater />
           <Toaster position="top-center" richColors closeButton />
           {children}
         </ThemeProvider>

@@ -3,7 +3,7 @@ import { MetadataRoute } from 'next'
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'Pigtown Barbershop',
-    short_name: 'Pigtown',
+    short_name: 'PB Office',
     description: 'Sistem manajemen modern untuk Pigtown Barbershop',
     start_url: '/',
     display: 'standalone',
