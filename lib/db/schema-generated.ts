@@ -213,10 +213,22 @@ export const receipt_templates = pgTable('receipt_templates', {
   header_text: text('header_text'),
   footer_text: text('footer_text'),
   logo_url: text('logo_url'),
+  logo_height: integer('logo_height').default(40),
+  branch_id: uuid('branch_id'),
+  paper_size: varchar('paper_size', { length: 10 }).default('80mm'),
+  paper_width: integer('paper_width').default(80),
+  font_size: varchar('font_size', { length: 10 }).default('medium'),
+  show_logo: boolean('show_logo').default(false),
+  show_address: boolean('show_address').default(true),
+  show_phone: boolean('show_phone').default(true),
+  show_date: boolean('show_date').default(true),
+  show_barber: boolean('show_barber').default(true),
+  show_cashier: boolean('show_cashier').default(true),
+  show_customer: boolean('show_customer').default(true),
   is_active: boolean('is_active').default(false),
   is_default: boolean('is_default').default(false),
-  branch_id: uuid('branch_id'),
   created_at: timestamp('created_at').defaultNow(),
+  updated_at: timestamp('updated_at').defaultNow(),
 })
 
 // ========================================

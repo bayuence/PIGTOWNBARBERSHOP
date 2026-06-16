@@ -191,11 +191,25 @@ export const points = pgTable('points', {
 // =====================================================
 
 export const receiptTemplates = pgTable('receipt_templates', {
-  id: serial('id').primaryKey(),
-  branchId: uuid('branch_id'),
+  id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
-  template: jsonb('template').notNull(),
-  isActive: boolean('is_active').notNull().default(true), // ✅ This is correct - database column is 'is_active'
+  headerText: text('header_text'),
+  footerText: text('footer_text'),
+  logoUrl: text('logo_url'),
+  logoHeight: integer('logo_height').default(40),
+  branchId: uuid('branch_id'),
+  paperSize: varchar('paper_size', { length: 10 }).default('80mm'),
+  paperWidth: integer('paper_width').default(80),
+  fontSize: varchar('font_size', { length: 10 }).default('medium'),
+  showLogo: boolean('show_logo').default(false),
+  showAddress: boolean('show_address').default(true),
+  showPhone: boolean('show_phone').default(true),
+  showDate: boolean('show_date').default(true),
+  showBarber: boolean('show_barber').default(true),
+  showCashier: boolean('show_cashier').default(true),
+  showCustomer: boolean('show_customer').default(true),
+  isActive: boolean('is_active').default(false),
+  isDefault: boolean('is_default').default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });

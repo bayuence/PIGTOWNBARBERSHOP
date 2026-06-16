@@ -210,10 +210,32 @@ export interface ReceiptTemplate {
   header_text?: string
   footer_text?: string
   logo_url?: string
+  logo_height?: number
   is_active?: boolean
   is_default?: boolean
   branch_id?: string
+  paper_size?: string
+  paper_width?: number
+  font_size?: string
+  show_logo?: boolean
+  show_address?: boolean
+  show_phone?: boolean
+  show_date?: boolean
+  show_barber?: boolean
+  show_cashier?: boolean
+  show_customer?: boolean
   created_at?: string
+  updated_at?: string
+}
+
+export interface OutletStock {
+  id: string
+  service_id: string
+  outlet_id: string
+  stock_quantity: number
+  min_stock_threshold: number
+  service?: { name: string; type?: string } | null
+  branch?: { name: string } | null
 }
 
 // =============================
@@ -792,49 +814,114 @@ export async function getReceiptTemplate(branchId?: string) {
   }
 }
 
-export async function getActiveReceiptTemplate() {
+export async function getActiveReceiptTemplate(branchId?: string) {
   try {
-    const { data, error } = await supabase
+    // Priority 1: template aktif yang spesifik untuk cabang ini
+    if (branchId) {
+      const { data: branchTemplate } = await supabase
+        .from('receipt_templates')
+        .select('*')
+        .eq('is_active', true)
+        .eq('branch_id', branchId)
+        .limit(1)
+        .maybeSingle()
+
+      if (branchTemplate) {
+        return {
+          data: {
+            ...branchTemplate,
+            paper_width: branchTemplate.paper_width || (branchTemplate.paper_size === '58mm' ? 58 : 80)
+          } as ReceiptTemplate,
+          error: null
+        }
+      }
+    }
+
+    // Priority 2: template default (berlaku untuk semua cabang)
+    const { data: defaultTemplate } = await supabase
       .from('receipt_templates')
       .select('*')
       .eq('is_default', true)
       .limit(1)
-      .maybeSingle() // Use maybeSingle() instead of single() to handle no rows
-    
-    // If no template found, return default template
-    if (!data && !error) {
+      .maybeSingle()
+
+    if (defaultTemplate) {
       return {
         data: {
-          id: 'default',
-          name: 'Default Template',
-          header_text: 'PIGTOWN BARBERSHOP\nJl. Contoh No. 123\nTelp: (021) 1234-5678',
-          footer_text: 'Terima kasih atas kunjungan Anda!\nSampai jumpa kembali!',
-          logo_url: '/images/pigtown-logo.png',
-          is_active: true,
-          is_default: true,
-          branch_id: null,
-          created_at: new Date().toISOString(),
-        },
+          ...defaultTemplate,
+          paper_width: defaultTemplate.paper_width || (defaultTemplate.paper_size === '58mm' ? 58 : 80)
+        } as ReceiptTemplate,
         error: null
       }
     }
-    
-    return { data: data || null, error: error || null }
-  } catch (error: any) {
-    console.error('[getActiveReceiptTemplate] Error:', error)
-    // Return default template on error
+
+    // Priority 3: template aktif manapun
+    const { data: anyActive } = await supabase
+      .from('receipt_templates')
+      .select('*')
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle()
+
+    if (anyActive) {
+      return {
+        data: {
+          ...anyActive,
+          paper_width: anyActive.paper_width || (anyActive.paper_size === '58mm' ? 58 : 80)
+        } as ReceiptTemplate,
+        error: null
+      }
+    }
+
+    // Fallback hardcoded
     return {
       data: {
         id: 'default',
         name: 'Default Template',
-        header_text: 'PIGTOWN BARBERSHOP\nJl. Contoh No. 123\nTelp: (021) 1234-5678',
-        footer_text: 'Terima kasih atas kunjungan Anda!\nSampai jumpa kembali!',
-        logo_url: '/images/pigtown-logo.png',
+        header_text: 'PIGTOWN BARBERSHOP',
+        footer_text: 'Terima kasih atas kunjungan Anda!',
+        logo_url: null,
         is_active: true,
         is_default: true,
+        paper_size: '80mm',
+        paper_width: 80,
+        font_size: 'medium',
+        show_logo: false,
+        show_address: true,
+        show_phone: true,
+        show_date: true,
+        show_barber: true,
+        show_cashier: true,
+        show_customer: true,
         branch_id: null,
         created_at: new Date().toISOString(),
-      },
+      } as ReceiptTemplate,
+      error: null
+    }
+  } catch (error: any) {
+    console.error('[getActiveReceiptTemplate] Error:', error)
+    return {
+      data: {
+        id: 'default',
+        name: 'Default Template',
+        header_text: 'PIGTOWN BARBERSHOP',
+        footer_text: 'Terima kasih atas kunjungan Anda!',
+        logo_url: null,
+        is_active: true,
+        is_default: true,
+        paper_size: '80mm',
+        paper_width: 80,
+        font_size: 'medium',
+        show_logo: false,
+        show_address: true,
+        show_phone: true,
+        show_date: true,
+        show_barber: true,
+        show_cashier: true,
+        show_customer: true,
+        branch_id: null,
+        created_at: new Date().toISOString(),
+      } as ReceiptTemplate,
       error: null
     }
   }
@@ -851,7 +938,7 @@ export async function getEmployees(branchId?: string) {
   return getUsers(branchId)
 }
 
-export async function getOutletStock() {
+export async function getOutletStock(branchId?: string) {
   try {
     const { data, error } = await supabase
       .from('services')
@@ -859,9 +946,21 @@ export async function getOutletStock() {
       .eq('type', 'product')
       .order('name')
     if (error) throw error
-    return { data: data || [], error: null }
+
+    // Map services.stock → OutletStock format expected by POS
+    const mapped: OutletStock[] = (data || []).map((s: any) => ({
+      id: s.id,
+      service_id: s.id,
+      outlet_id: branchId || '',
+      stock_quantity: s.stock ?? 0,
+      min_stock_threshold: 5,
+      service: { name: s.name, type: s.type },
+      branch: null,
+    }))
+
+    return { data: mapped, error: null }
   } catch (error: any) {
-    return { data: [], error }
+    return { data: [] as OutletStock[], error }
   }
 }
 
@@ -1555,8 +1654,33 @@ export async function getPointTransactions(branchId?: string) {
   }
 }
 
-export async function reduceOutletStock(serviceId: string, quantity: number) {
-  return { data: null, error: null }
+export async function reduceOutletStock(outletId: string, serviceId: string, quantity: number) {
+  try {
+    // Get current stock
+    const { data: service, error: fetchError } = await supabase
+      .from('services')
+      .select('stock')
+      .eq('id', serviceId)
+      .single()
+
+    if (fetchError) throw fetchError
+
+    const currentStock = service?.stock ?? 0
+    const newStock = Math.max(0, currentStock - quantity)
+
+    const { data, error } = await supabase
+      .from('services')
+      .update({ stock: newStock })
+      .eq('id', serviceId)
+      .select()
+      .single()
+
+    if (error) throw error
+    return { data, error: null }
+  } catch (error: any) {
+    console.error('[reduceOutletStock] Error:', error)
+    return { data: null, error }
+  }
 }
 
 export function subscribeToEvents(callback: any) {

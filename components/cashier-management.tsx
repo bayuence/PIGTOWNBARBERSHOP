@@ -87,6 +87,8 @@ interface MenuItem {
 interface Branch {
   id: string
   name: string
+  address?: string
+  phone?: string
 }
 
 interface ReceiptTemplate {
@@ -95,11 +97,12 @@ interface ReceiptTemplate {
   header_text?: string
   footer_text?: string
   logo_url?: string
+  logo_height?: number
   branch_id?: string
   is_active?: boolean
   is_default?: boolean
-  template_data?: any
   paper_size?: string
+  paper_width?: number
   font_size?: string
   show_logo?: boolean
   show_address?: boolean
@@ -107,6 +110,7 @@ interface ReceiptTemplate {
   show_date?: boolean
   show_cashier?: boolean
   show_barber?: boolean
+  show_customer?: boolean
   created_at?: string
   updated_at?: string
 }
@@ -198,7 +202,7 @@ export function CashierManagement() {
     
     setStockLoading(true);
     try {
-      const { data, error } = await getOutletStock(outletId);
+      const { data, error } = await getOutletStock();
       if (error) {
         console.error("Error fetching outlet stock:", error);
         toast({
@@ -230,17 +234,8 @@ export function CashierManagement() {
   };
 
   const handleUpdateStock = async (serviceId: string, newStock: number) => {
-    if (!selectedOutlet) {
-      toast({
-        title: "Error",
-        description: "Pilih outlet terlebih dahulu",
-        variant: "destructive",
-      });
-      return;
-    }
-
     try {
-      const { data, error } = await updateOutletStock(selectedOutlet, serviceId, newStock);
+      const { data, error } = await updateOutletStock(serviceId, newStock);
       if (error) {
         throw error;
       }
@@ -249,6 +244,13 @@ export function CashierManagement() {
       setOutletStock(prev => prev.map(item => 
         item.service_id === serviceId 
           ? { ...item, stock_quantity: newStock }
+          : item
+      ));
+      
+      // Also update menuItems state so the UI reflects new stock
+      setMenuItems(prev => prev.map(item =>
+        item.id === serviceId
+          ? { ...item, stock: newStock }
           : item
       ));
 
@@ -440,7 +442,7 @@ export function CashierManagement() {
 
   const fetchBranches = async () => {
     try {
-      const { data, error } = await supabase.from("branches").select("id, name, created_at").order("name")
+      const { data, error } = await supabase.from("branches").select("id, name, address, phone, created_at").order("name")
       if (error) {
         console.error("[v0] Error fetching branches:", error)
         return
@@ -884,6 +886,11 @@ export function CashierManagement() {
   }
 
   const handleSaveTemplate = async () => {
+    if (!templateName.trim()) {
+      toast({ title: "Error", description: "Nama template harus diisi", variant: "destructive" })
+      return
+    }
+
     try {
       setSavingTemplate(true)
       let logoUploadUrl = logoUrl
@@ -891,30 +898,38 @@ export function CashierManagement() {
       if (logoFile) {
         logoUploadUrl = await uploadLogo(logoFile)
         if (!logoUploadUrl) {
-          toast({
-            title: "Error",
-            description: "Gagal mengupload logo",
-            variant: "destructive",
-          })
+          toast({ title: "Error", description: "Gagal mengupload logo", variant: "destructive" })
           return
         }
       }
 
-      const templateData = {
+      const paperWidth = paperSize === "58mm" ? 58 : 80
+
+      // Base data — always supported columns
+      const baseData = {
         name: templateName,
         header_text: templateHeader,
         footer_text: templateFooter,
         logo_url: logoUploadUrl,
         branch_id: selectedBranch === "none" ? null : selectedBranch || null,
+        is_active: true,
+      }
+
+      // Extended display columns — added via migration-receipt-template.sql
+      const extendedData = {
         paper_size: paperSize,
+        paper_width: paperWidth,
         font_size: fontSize,
         show_logo: showLogo,
         show_address: showAddress,
         show_phone: showPhone,
         show_date: showDate,
         show_barber: showBarber,
-        is_active: false,
+        show_cashier: showCashier,
+        show_customer: true,
       }
+
+      const templateData = { ...baseData, ...extendedData }
 
       let result
       if (editingTemplateId) {
@@ -923,14 +938,29 @@ export function CashierManagement() {
         result = await supabase.from("receipt_templates").insert([templateData])
       }
 
+      // If extended columns don't exist yet, retry with base data only
       if (result.error) {
-        console.error("[v0] Error saving template:", result.error)
-        toast({
-          title: "Error",
-          description: "Gagal menyimpan template",
-          variant: "destructive",
-        })
-        return
+        const errMsg = result.error.message || ""
+        const isColumnMissing = errMsg.includes("column") || result.error.code === "42703"
+
+        if (isColumnMissing) {
+          console.warn("[template] Extended columns missing — saving base data only. Run migration-receipt-template.sql in Supabase SQL Editor.")
+          if (editingTemplateId) {
+            result = await supabase.from("receipt_templates").update(baseData).eq("id", editingTemplateId)
+          } else {
+            result = await supabase.from("receipt_templates").insert([baseData])
+          }
+        }
+
+        if (result.error) {
+          console.error("[v0] Error saving template:", result.error)
+          toast({
+            title: "Error",
+            description: `Gagal menyimpan template: ${result.error.message}`,
+            variant: "destructive",
+          })
+          return
+        }
       }
 
       toast({
@@ -1130,11 +1160,12 @@ export function CashierManagement() {
     setSelectedBranch(template.branch_id || "none")
     setPaperSize(template.paper_size || "80mm")
     setFontSize(template.font_size || "medium")
-    setShowLogo(template.show_logo || false)
-    setShowAddress(template.show_address || false)
-    setShowPhone(template.show_phone || false)
-    setShowDate(template.show_date || false)
-    setShowBarber(template.show_barber || false)
+    setShowLogo(template.show_logo ?? false)
+    setShowAddress(template.show_address ?? true)
+    setShowPhone(template.show_phone ?? true)
+    setShowDate(template.show_date ?? true)
+    setShowBarber(template.show_barber ?? true)
+    setShowCashier(template.show_cashier ?? true)
     setLogoUrl(template.logo_url || "")
     setLogoPreview(template.logo_url || "")
     setIsTemplateDialogOpen(true)
@@ -1373,7 +1404,7 @@ export function CashierManagement() {
       }
 
       // Update local state
-      setMenuItems((prev) => prev.map((item) => (item.id === itemId ? { ...item, status: newStatus } : item)))
+      setMenuItems((prev) => prev.map((item) => (item.id === itemId ? { ...item, status: newStatus as "active" | "inactive" } : item)))
 
       toast({
         title: "Berhasil",
@@ -1896,15 +1927,27 @@ export function CashierManagement() {
                                     <Input
                                       type="number"
                                       min="0"
-                                      value={currentStock}
-                                      onChange={(e) => {
+                                      defaultValue={item.stock ?? 0}
+                                      key={`stock-${item.id}-${item.stock}`}
+                                      onBlur={(e) => {
                                         const newStock = Number.parseInt(e.target.value) || 0
-                                        handleUpdateStock(item.id, newStock)
+                                        if (newStock !== (item.stock ?? 0)) {
+                                          handleUpdateStock(item.id, newStock)
+                                        }
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                          const newStock = Number.parseInt((e.target as HTMLInputElement).value) || 0
+                                          if (newStock !== (item.stock ?? 0)) {
+                                            handleUpdateStock(item.id, newStock)
+                                          }
+                                          (e.target as HTMLInputElement).blur()
+                                        }
                                       }}
                                       className="h-9 w-20 text-center font-bold"
                                     />
                                   </div>
-                                  {currentStock <= minStock && (
+                                  {(item.stock ?? 0) <= 5 && (
                                     <Badge variant="destructive" className="text-xs text-center">
                                       Stok Rendah
                                     </Badge>
@@ -2002,41 +2045,71 @@ export function CashierManagement() {
                   </CardHeader>
 
                   <CardContent className="space-y-4">
-                    {/* Template Preview */}
-                    <div className="bg-white border rounded p-3 text-xs font-mono">
-                      {template.show_logo && template.logo_url && (
-                        <div className="text-center mb-2">
-                          <img
-                            src={template.logo_url || "/images/pigtown-logo.png"}
-                            alt="Logo"
-                            className="h-12 w-auto mx-auto"
-                            onError={(e) => {
-                              console.log("[v0] Logo failed to load:", template.logo_url)
-                              e.currentTarget.style.display = "none"
-                            }}
-                          />
+                    {/* Template Preview — full accurate preview */}
+                    <div
+                      className="bg-white border rounded overflow-hidden"
+                      style={{ fontFamily: "'Courier New', monospace", fontSize: "7.5px", lineHeight: "1.4" }}
+                    >
+                      {/* top perf */}
+                      <div className="h-1 border-b border-dashed border-gray-300 bg-gray-50" />
+                      <div className="px-3 py-2 space-y-1">
+                        {/* Header */}
+                        <div className="text-center">
+                          {template.show_logo && template.logo_url && (
+                            <img src={template.logo_url} alt="Logo" className="h-8 w-auto mx-auto mb-1 object-contain" />
+                          )}
+                          <div className="font-bold whitespace-pre-line break-words">
+                            {template.header_text || template.name}
+                          </div>
+                          {template.show_address && (() => {
+                            const b = branches.find(br => br.id === template.branch_id)
+                            return b?.address ? <div className="text-gray-500 break-words">{b.address}</div> : null
+                          })()}
+                          {template.show_phone && (() => {
+                            const b = branches.find(br => br.id === template.branch_id)
+                            return b?.phone ? <div className="text-gray-500">Telp: {b.phone}</div> : null
+                          })()}
                         </div>
-                      )}
-                      <div className="text-center border-b pb-2 mb-2">
-                        {template.header_text?.split("\n").map((line, i) => (
-                          <div key={i}>{line}</div>
-                        ))}
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex justify-between">
-                          <span>Basic Cut</span>
-                          <span>25.000</span>
+
+                        <div className="border-t border-dashed border-gray-400" />
+
+                        {/* Info */}
+                        <div>
+                          {template.show_date && <div>Tgl: 17/06/2026 13:00</div>}
+                          <div>No: TRX-17062026-001</div>
+                          {template.show_cashier && <div>Kasir: Admin</div>}
+                          {template.show_barber && <div>Capster: Budi</div>}
+                          <div>Customer: John Doe</div>
                         </div>
-                        <div className="border-t pt-1 flex justify-between font-bold">
-                          <span>TOTAL</span>
-                          <span>25.000</span>
+
+                        <div className="border-t border-dashed border-gray-400" />
+
+                        {/* Items */}
+                        <div>
+                          <div className="font-semibold">Basic Cut</div>
+                          <div className="flex justify-between gap-1">
+                            <span>1 x Rp 35.000</span><span className="flex-shrink-0">Rp 35.000</span>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-dashed border-gray-400" />
+
+                        {/* Total */}
+                        <div>
+                          <div className="flex justify-between gap-1"><span>Subtotal:</span><span className="flex-shrink-0">Rp 35.000</span></div>
+                          <div className="flex justify-between gap-1 font-bold"><span>TOTAL:</span><span className="flex-shrink-0">Rp 35.000</span></div>
+                          <div>Bayar: Cash</div>
+                        </div>
+
+                        <div className="border-t border-dashed border-gray-400" />
+
+                        {/* Footer */}
+                        <div className="text-center whitespace-pre-line break-words">
+                          {template.footer_text || "Terima kasih atas kunjungan Anda!"}
                         </div>
                       </div>
-                      <div className="text-center border-t pt-2 mt-2">
-                        {template.footer_text?.split("\n").map((line, i) => (
-                          <div key={i}>{line}</div>
-                        ))}
-                      </div>
+                      {/* bottom perf */}
+                      <div className="h-1 border-t border-dashed border-gray-300 bg-gray-50" />
                     </div>
 
                     {/* Toggle Default - Full Width */}
@@ -2356,190 +2429,222 @@ export function CashierManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Template Dialog - keeping existing template dialog code */}
+      {/* Template Dialog with Live Preview */}
       <Dialog open={isTemplateDialogOpen} onOpenChange={setIsTemplateDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingTemplateId ? "Edit Template Struk" : "Template Struk Baru"}</DialogTitle>
-            <DialogDescription>Atur tampilan dan format struk pembayaran yang akan dicetak</DialogDescription>
-          </DialogHeader>
+        <DialogContent className="!max-w-4xl w-[90vw] p-0 gap-0 overflow-hidden flex flex-col max-h-[90vh]">
+          {/* ── Dialog Header ── */}
+          <div className="px-6 py-4 border-b flex-shrink-0">
+            <DialogTitle className="text-lg font-semibold">
+              {editingTemplateId ? "Edit Template Struk" : "Template Struk Baru"}
+            </DialogTitle>
+            <DialogDescription className="text-sm text-gray-500 mt-0.5">
+              Atur tampilan struk — preview langsung di sebelah kanan
+            </DialogDescription>
+          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
-            {/* Basic Information */}
-            <div className="space-y-4">
+          {/* ── Body ── */}
+          <div className="flex flex-1 min-h-0">
+
+            {/* LEFT: Form — scrollable */}
+            <div className="flex-1 min-w-0 overflow-y-auto px-6 py-5 space-y-5 border-r">
+
               <div>
-                <label className="text-sm font-medium">Nama Template</label>
-                <Input
-                  type="text"
-                  value={templateName}
-                  onChange={(e) => setTemplateName(e.target.value)}
-                  placeholder="Nama template..."
-                />
+                <label className="text-sm font-medium text-gray-700 block mb-1">Nama Template</label>
+                <Input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Contoh: Struk Utama 80mm" />
               </div>
 
               <div>
-                <label className="text-sm font-medium">Cabang</label>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Cabang</label>
                 <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih Cabang (Opsional)" />
-                  </SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Pilih Cabang (Opsional)" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Tanpa Cabang</SelectItem>
-                    {branches.map((branch) => (
-                      <SelectItem key={branch.id} value={branch.id}>
-                        {branch.name}
-                      </SelectItem>
-                    ))}
+                    {branches.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
 
-              <div>
-                <label className="text-sm font-medium">Ukuran Kertas</label>
-                <Select value={paperSize} onValueChange={setPaperSize}>
-                  <SelectTrigger>
-                    <SelectValue value={paperSize} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="80mm">80mm</SelectItem>
-                    <SelectItem value="58mm">58mm</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-1">Ukuran Kertas</label>
+                  <Select value={paperSize} onValueChange={setPaperSize}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="80mm">80mm (Standar)</SelectItem>
+                      <SelectItem value="58mm">58mm (Mini)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-1">Ukuran Font</label>
+                  <Select value={fontSize} onValueChange={setFontSize}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="small">Kecil</SelectItem>
+                      <SelectItem value="medium">Sedang</SelectItem>
+                      <SelectItem value="large">Besar</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div>
-                <label className="text-sm font-medium">Ukuran Font</label>
-                <Select value={fontSize} onValueChange={setFontSize}>
-                  <SelectTrigger>
-                    <SelectValue value={fontSize} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="small">Kecil</SelectItem>
-                    <SelectItem value="medium">Sedang</SelectItem>
-                    <SelectItem value="large">Besar</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Template Content */}
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">Header Text</label>
-                <Textarea
-                  value={templateHeader}
-                  onChange={(e) => setTemplateHeader(e.target.value)}
-                  placeholder="Teks di bagian atas struk..."
-                />
+                <label className="text-sm font-medium text-gray-700 block mb-1">Header Text</label>
+                <Textarea value={templateHeader} onChange={(e) => setTemplateHeader(e.target.value)} placeholder={"PIGTOWN BARBERSHOP\nJl. Contoh No. 123\nTelp: (021) 1234-5678"} className="resize-none text-sm" rows={3} />
+                <p className="text-xs text-gray-400 mt-1">Gunakan Enter untuk pindah baris</p>
               </div>
 
               <div>
-                <label className="text-sm font-medium">Footer Text</label>
-                <Textarea
-                  value={templateFooter}
-                  onChange={(e) => setTemplateFooter(e.target.value)}
-                  placeholder="Teks di bagian bawah struk..."
-                />
+                <label className="text-sm font-medium text-gray-700 block mb-1">Footer Text</label>
+                <Textarea value={templateFooter} onChange={(e) => setTemplateFooter(e.target.value)} placeholder={"Terima kasih atas kunjungan Anda!\nSampai jumpa kembali 😊"} className="resize-none text-sm" rows={3} />
               </div>
 
               <div>
-                <label className="text-sm font-medium">Logo (Opsional)</label>
-                <Input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) {
-                      setLogoFile(file)
-                      setLogoPreview(URL.createObjectURL(file))
-                    }
-                  }}
-                />
+                <label className="text-sm font-medium text-gray-700 block mb-1">Logo (Opsional)</label>
+                <Input type="file" accept="image/*" className="text-sm" onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) { setLogoFile(file); setLogoPreview(URL.createObjectURL(file)) }
+                }} />
                 {logoPreview && (
-                  <img src={logoPreview || "/placeholder.svg"} alt="Logo Preview" className="mt-2 max-h-20" />
+                  <div className="mt-2 flex items-center gap-3">
+                    <img src={logoPreview} alt="Logo" className="h-12 rounded border object-contain bg-gray-50 p-1" />
+                    <button type="button" onClick={() => { setLogoPreview(null); setLogoFile(null) }} className="text-xs text-red-500 hover:underline">Hapus logo</button>
+                  </div>
                 )}
               </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-3">Tampilkan di Struk</label>
+                <div className="grid grid-cols-2 gap-3">
+                  {([
+                    { label: "Logo", state: showLogo, set: setShowLogo },
+                    { label: "Alamat Cabang", state: showAddress, set: setShowAddress },
+                    { label: "Nomor Telepon", state: showPhone, set: setShowPhone },
+                    { label: "Tanggal & Waktu", state: showDate, set: setShowDate },
+                    { label: "Nama Kasir", state: showCashier, set: setShowCashier },
+                    { label: "Nama Capster", state: showBarber, set: setShowBarber },
+                  ] as { label: string; state: boolean; set: (v: boolean) => void }[]).map(({ label, state, set }) => (
+                    <button key={label} type="button" onClick={() => set(!state)}
+                      className="flex items-center gap-3 p-2.5 rounded-lg border transition-colors hover:bg-gray-50 text-left"
+                    >
+                      <div className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors ${state ? "bg-red-600" : "bg-gray-200"}`}>
+                        <span className={`inline-block h-4 w-4 mt-0.5 rounded-full bg-white shadow transition-transform ${state ? "translate-x-4" : "translate-x-0.5"}`} />
+                      </div>
+                      <span className="text-sm text-gray-700">{label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT: Live Preview — fixed width, scrollable */}
+            <div className="w-72 flex-shrink-0 bg-gray-100 flex flex-col">
+              {/* Preview header bar */}
+              <div className="px-4 py-2.5 border-b bg-white flex items-center gap-2 flex-shrink-0">
+                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                <span className="text-sm font-medium text-gray-700">Preview Langsung</span>
+              </div>
+
+              {/* Scrollable paper area */}
+              <div className="flex-1 overflow-y-auto py-5 px-4 flex justify-center items-start">
+                <div className={`transition-all duration-200 ${paperSize === "58mm" ? "w-40" : "w-56"}`}>
+                  {/* Paper */}
+                  <div
+                    className="bg-white shadow-lg overflow-hidden"
+                    style={{
+                      fontFamily: "'Courier New', monospace",
+                      fontSize: fontSize === "small" ? "7.5px" : fontSize === "large" ? "10px" : "8.5px",
+                      lineHeight: "1.5",
+                      wordBreak: "break-word",
+                      overflowWrap: "break-word",
+                    }}
+                  >
+                    {/* Top perforation */}
+                    <div className="h-1.5 border-b-2 border-dashed border-gray-300 bg-gray-50" />
+
+                    <div className="px-3 py-2">
+                      {/* Header section */}
+                      <div className="text-center mb-1.5">
+                        {showLogo && logoPreview && (
+                          <img src={logoPreview} alt="Logo" className="h-8 w-auto mx-auto mb-1 object-contain" style={{ maxWidth: "80%" }} />
+                        )}
+                        <div className="font-bold whitespace-pre-line break-words">
+                          {templateHeader || "PIGTOWN BARBERSHOP"}
+                        </div>
+                        {showAddress && (() => {
+                          const b = branches.find(br => br.id === selectedBranch)
+                          return b?.address ? <div className="text-gray-500 break-words">{b.address}</div> : null
+                        })()}
+                        {showPhone && (() => {
+                          const b = branches.find(br => br.id === selectedBranch)
+                          return b?.phone ? <div className="text-gray-500">Telp: {b.phone}</div> : null
+                        })()}
+                      </div>
+
+                      <div className="border-t border-dashed border-gray-400 my-1.5" />
+
+                      {/* Transaction info */}
+                      <div>
+                        {showDate && <div>Tgl: 17/06/2026 02:50</div>}
+                        <div>No: TRX-17062026-001</div>
+                        {showCashier && <div>Kasir: Admin</div>}
+                        {showBarber && <div>Capster: Budi</div>}
+                        <div>Customer: John Doe</div>
+                      </div>
+
+                      <div className="border-t border-dashed border-gray-400 my-1.5" />
+
+                      {/* Items */}
+                      <div className="space-y-1">
+                        {[{ name: "Haircut", price: 35000 }, { name: "Gatsby Pomade", price: 25000 }].map((item) => (
+                          <div key={item.name}>
+                            <div className="font-semibold truncate">{item.name}</div>
+                            <div className="flex justify-between gap-1">
+                              <span>1 x Rp {item.price.toLocaleString("id-ID")}</span>
+                              <span className="flex-shrink-0">Rp {item.price.toLocaleString("id-ID")}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="border-t border-dashed border-gray-400 my-1.5" />
+
+                      {/* Totals */}
+                      <div className="space-y-0.5">
+                        <div className="flex justify-between gap-1"><span>Subtotal:</span><span className="flex-shrink-0">Rp 60.000</span></div>
+                        <div className="flex justify-between gap-1 font-bold"><span>TOTAL:</span><span className="flex-shrink-0">Rp 60.000</span></div>
+                        <div>Bayar: Cash</div>
+                        <div className="flex justify-between gap-1"><span>Diterima:</span><span className="flex-shrink-0">Rp 100.000</span></div>
+                        <div className="flex justify-between gap-1"><span>Kembalian:</span><span className="flex-shrink-0">Rp 40.000</span></div>
+                      </div>
+
+                      <div className="border-t border-dashed border-gray-400 my-1.5" />
+
+                      {/* Footer */}
+                      <div className="text-center whitespace-pre-line break-words">
+                        {templateFooter || "Terima kasih atas kunjungan Anda!"}
+                      </div>
+                    </div>
+
+                    {/* Bottom perforation */}
+                    <div className="h-1.5 border-t-2 border-dashed border-gray-300 bg-gray-50" />
+                  </div>
+
+                  <p className="text-center text-[10px] text-gray-400 mt-2">
+                    {paperSize} · {fontSize === "small" ? "Font Kecil" : fontSize === "large" ? "Font Besar" : "Font Sedang"}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Checkbox Options */}
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="inline-flex items-center">
-                <Input
-                  type="checkbox"
-                  checked={showLogo}
-                  onChange={(e) => setShowLogo(e.target.checked)}
-                  className="mr-2"
-                />
-                Tampilkan Logo
-              </label>
-            </div>
-            <div>
-              <label className="inline-flex items-center">
-                <Input
-                  type="checkbox"
-                  checked={showAddress}
-                  onChange={(e) => setShowAddress(e.target.checked)}
-                  className="mr-2"
-                />
-                Tampilkan Alamat
-              </label>
-            </div>
-            <div>
-              <label className="inline-flex items-center">
-                <Input
-                  type="checkbox"
-                  checked={showPhone}
-                  onChange={(e) => setShowPhone(e.target.checked)}
-                  className="mr-2"
-                />
-                Tampilkan Telepon
-              </label>
-            </div>
-            <div>
-              <label className="inline-flex items-center">
-                <Input
-                  type="checkbox"
-                  checked={showDate}
-                  onChange={(e) => setShowDate(e.target.checked)}
-                  className="mr-2"
-                />
-                Tampilkan Tanggal
-              </label>
-            </div>
-            <div>
-              <label className="inline-flex items-center">
-                <Input
-                  type="checkbox"
-                  checked={showCashier}
-                  onChange={(e) => setShowCashier(e.target.checked)}
-                  className="mr-2"
-                />
-                Tampilkan Kasir
-              </label>
-            </div>
-            <div>
-              <label className="inline-flex items-center">
-                <Input
-                  type="checkbox"
-                  checked={showBarber}
-                  onChange={(e) => setShowBarber(e.target.checked)}
-                  className="mr-2"
-                />
-                Tampilkan Capster
-              </label>
-            </div>
+          {/* ── Footer ── */}
+          <div className="px-6 py-4 border-t bg-white flex justify-end gap-3 flex-shrink-0">
+            <Button type="button" variant="outline" onClick={() => setIsTemplateDialogOpen(false)}>Batal</Button>
+            <Button type="button" disabled={savingTemplate} onClick={handleSaveTemplate} className="bg-red-600 hover:bg-red-700 text-white min-w-36">
+              {savingTemplate ? "Menyimpan..." : "Simpan Template"}
+            </Button>
           </div>
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setIsTemplateDialogOpen(false)}>
-              Batal
-            </Button>
-            <Button type="button" disabled={savingTemplate} onClick={handleSaveTemplate}>
-              {savingTemplate ? "Menyimpan..." : "Simpan"}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -1090,14 +1090,25 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                                 placeholder={commissionType === 'percentage' ? 'Contoh: 10' : 'Contoh: 50.000'}
                             />
                             {commissionType === 'percentage' && commissionValue && (
-                                <p className="text-xs text-gray-600">
-                                    = {parseNominal(commissionValue)}% dari harga layanan
-                                </p>
+                                <div className="text-xs text-gray-600 bg-gray-50 rounded p-2 space-y-0.5">
+                                    <p>= <span className="font-medium">{parseNominal(commissionValue)}%</span> dari harga layanan</p>
+                                    {selectedService && (() => {
+                                        const svc = services.find(s => s.id === selectedService)
+                                        if (!svc) return null
+                                        const nominal = Math.round(svc.price * parseNominal(commissionValue) / 100)
+                                        return (
+                                            <p className="text-green-700 font-semibold">
+                                                = Rp {nominal.toLocaleString('id-ID')} per transaksi
+                                                <span className="text-gray-400 font-normal ml-1">(dari Rp {Number(svc.price).toLocaleString('id-ID')})</span>
+                                            </p>
+                                        )
+                                    })()}
+                                </div>
                             )}
                             {commissionType === 'fixed' && commissionValue && (
-                                <p className="text-xs text-gray-600">
-                                    = {formatRupiah(parseNominal(commissionValue))} per transaksi
-                                </p>
+                                <div className="text-xs text-gray-600 bg-gray-50 rounded p-2">
+                                    <p>= <span className="text-green-700 font-semibold">Rp {formatRupiah(parseNominal(commissionValue))}</span> per transaksi (nominal tetap)</p>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -1186,14 +1197,21 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                                 placeholder={commissionType === 'percentage' ? '10' : '50.000'}
                             />
                             {selectedTransaction && commissionType === 'percentage' && commissionValue && (
-                                <p className="text-sm font-semibold text-green-600 bg-green-50 p-2 rounded">
-                                    Komisi: {formatRupiah((selectedTransaction.unit_price * selectedTransaction.quantity * parseNominal(commissionValue)) / 100)}
-                                </p>
+                                <div className="text-xs bg-green-50 border border-green-200 p-2 rounded space-y-0.5">
+                                    <p className="text-gray-600">
+                                        {parseNominal(commissionValue)}% × Rp {Number(selectedTransaction.unit_price * selectedTransaction.quantity).toLocaleString('id-ID')}
+                                    </p>
+                                    <p className="text-green-700 font-semibold text-sm">
+                                        = Rp {formatRupiah((selectedTransaction.unit_price * selectedTransaction.quantity * parseNominal(commissionValue)) / 100)} komisi
+                                    </p>
+                                </div>
                             )}
                             {commissionType === 'fixed' && commissionValue && (
-                                <p className="text-sm font-semibold text-green-600 bg-green-50 p-2 rounded">
-                                    Komisi: {formatRupiah(parseNominal(commissionValue))}
-                                </p>
+                                <div className="text-xs bg-green-50 border border-green-200 p-2 rounded">
+                                    <p className="text-green-700 font-semibold text-sm">
+                                        = Rp {formatRupiah(parseNominal(commissionValue))} per transaksi (nominal tetap)
+                                    </p>
+                                </div>
                             )}
                         </div>
 

@@ -157,8 +157,8 @@ export function POSSystem() {
     }
   }, [])
 
-  const loadBranchAndTemplateData = useCallback(async () => {
-    const { data: templateData, error: templateError } = await getActiveReceiptTemplate()
+  const loadBranchAndTemplateData = useCallback(async (branchId?: string) => {
+    const { data: templateData, error: templateError } = await getActiveReceiptTemplate(branchId)
     if (templateError) console.error("Error loading receipt template:", templateError)
     else setReceiptTemplate(templateData)
 
@@ -241,9 +241,11 @@ export function POSSystem() {
       const branch = branches.find(b => b.name === selectedBranch);
       if (branch?.id) {
         loadOutletStock(branch.id);
+        // Reload receipt template for this specific branch
+        loadBranchAndTemplateData(branch.id);
       }
     }
-  }, [selectedBranch, branches, loadOutletStock])
+  }, [selectedBranch, branches, loadOutletStock, loadBranchAndTemplateData])
 
   // Keyboard shortcuts untuk UX yang better
   useEffect(() => {
@@ -337,7 +339,9 @@ export function POSSystem() {
     setIsPrinting(true)
 
     try {
-      const paperWidth = receiptTemplate?.paper_width || 80
+      // Derive paper width: use paper_width field directly, or parse paper_size string
+      const paperWidth = receiptTemplate?.paper_width
+        || (receiptTemplate?.paper_size === '58mm' ? 58 : 80)
       const fontSize = receiptTemplate?.paper_width === 58 ? '8px' : '10px'
 
       const buildReceiptHTML = () => {
@@ -349,6 +353,7 @@ export function POSSystem() {
         const showPhone = receiptTemplate?.show_phone ?? true
         const showDate = receiptTemplate?.show_date ?? true
         const showBarber = receiptTemplate?.show_barber ?? true
+        const showCashier = receiptTemplate?.show_cashier ?? true
         const showCustomer = receiptTemplate?.show_customer ?? true
 
         const headerHTML = `
@@ -366,7 +371,8 @@ export function POSSystem() {
           <div style="font-size:${paperWidth === 58 ? '8px' : '9px'};">
             ${showDate ? `<div>Tanggal: ${currentTransaction.timestamp}</div>` : ''}
             <div>No: ${currentTransaction.receipt_number}</div>
-            ${showBarber ? `<div>Kasir: ${currentTransaction.employeeName}</div>` : ''}
+            ${showCashier ? `<div>Kasir: ${currentTransaction.employeeName}</div>` : ''}
+            ${showBarber && currentTransaction.barberName ? `<div>Capster: ${currentTransaction.barberName}</div>` : ''}
             ${showCustomer && currentTransaction.customer_name ? `<div>Customer: ${currentTransaction.customer_name}</div>` : ''}
           </div>
           <div style="border-top:1px dashed #000; margin:2mm 0"></div>`
@@ -510,6 +516,7 @@ export function POSSystem() {
       const showPhone = receiptTemplate?.show_phone ?? true
       const showDate = receiptTemplate?.show_date ?? true
       const showBarber = receiptTemplate?.show_barber ?? true
+      const showCashierBT = receiptTemplate?.show_cashier ?? true
       const showCustomer = receiptTemplate?.show_customer ?? true
 
       let receiptText = INIT
@@ -538,8 +545,11 @@ export function POSSystem() {
         receiptText += "Tanggal: " + currentTransaction.timestamp + "\n"
       }
       receiptText += "No: " + currentTransaction.receipt_number + "\n"
-      if (showBarber) {
+      if (showCashierBT) {
         receiptText += "Kasir: " + currentTransaction.employeeName + "\n"
+      }
+      if (showBarber && currentTransaction.barberName) {
+        receiptText += "Capster: " + currentTransaction.barberName + "\n"
       }
       if (showCustomer && currentTransaction.customer_name) {
         receiptText += "Customer: " + currentTransaction.customer_name + "\n"
@@ -890,8 +900,9 @@ export function POSSystem() {
         ...savedTransaction,
         items: cart,
         employeeName: currentUser?.name || "Unknown",
+        barberName: employees.find(e => String(e.id) === String(servingEmployee))?.name || null,
         timestamp: new Date().toLocaleString("id-ID"),
-        discount_amount: getDiscountAmount(), // ✅ Fixed: use discount_amount
+        discount_amount: getDiscountAmount(),
         discount_reason: discountReason,
         discount_type: discountType,
         // Cash info for receipt display only (not saved to database)
@@ -1582,8 +1593,11 @@ export function POSSystem() {
                       <div>Tanggal: {currentTransaction.timestamp}</div>
                     )}
                     <div>No: {currentTransaction.receipt_number}</div>
-                    {(receiptTemplate?.show_barber ?? true) && (
+                    {(receiptTemplate?.show_cashier ?? true) && (
                       <div>Kasir: {currentTransaction.employeeName}</div>
+                    )}
+                    {(receiptTemplate?.show_barber ?? true) && currentTransaction.barberName && (
+                      <div>Capster: {currentTransaction.barberName}</div>
                     )}
                     {(receiptTemplate?.show_customer ?? true) && currentTransaction.customer_name && (
                       <div>Customer: {currentTransaction.customer_name}</div>
