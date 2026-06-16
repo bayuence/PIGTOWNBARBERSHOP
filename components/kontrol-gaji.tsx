@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
@@ -699,240 +700,304 @@ export function KontrolGaji({
             )})}
           </div>
 
-          <Dialog open={isKelolaGajiOpen} onOpenChange={setIsKelolaGajiOpen}>
-            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader className="border-b border-red-100 pb-4">
-                <DialogTitle className="text-xl text-gray-800 flex items-center gap-2">
-                  <CreditCard className="h-5 w-5 text-red-600" />
-                  Kelola Gaji - {selectedEmployee?.name}
-                </DialogTitle>
-                <p className="text-sm text-gray-600 mt-2">
-                  Atur gaji pokok dan komisi dalam satu tempat
-                </p>
-              </DialogHeader>
-              
-              <Tabs defaultValue="gaji" className="w-full mt-6">
-                <TabsList className="grid w-full grid-cols-2 bg-red-50 border border-red-100">
-                  <TabsTrigger value="gaji" className="data-[state=active]:bg-red-600 data-[state=active]:text-white">
-                    <DollarSign className="h-4 w-4 mr-2" />
-                    Gaji Pokok
-                  </TabsTrigger>
-                  <TabsTrigger value="komisi" className="data-[state=active]:bg-red-600 data-[state=active]:text-white">
-                    <TrendingUp className="h-4 w-4 mr-2" />
-                    Komisi & Point
-                  </TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="gaji" className="pt-6">
-                  <div className="space-y-6">
-                    <div className="p-4 bg-red-50 border border-red-100 rounded-lg">
-                      <h4 className="font-semibold text-gray-800 mb-2">Informasi Gaji Saat Ini</h4>
-                      <p className="text-sm text-gray-600">
-                        Gaji pokok saat ini: <span className="font-semibold text-red-600">Rp {formatNominal(selectedEmployee?.baseSalary || 0)}</span>
-                      </p>
+          {/* Sheet: Kelola Gaji — modern side panel */}
+          <Sheet open={isKelolaGajiOpen} onOpenChange={setIsKelolaGajiOpen}>
+            <SheetContent side="right" className="w-full sm:max-w-xl lg:max-w-2xl p-0 overflow-hidden flex flex-col">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-red-600 to-orange-500 px-6 py-5 flex-shrink-0">
+                <SheetHeader>
+                  <SheetTitle className="text-white text-xl font-bold flex items-center gap-3">
+                    <div className="p-2 bg-white/20 rounded-lg">
+                      <CreditCard className="h-5 w-5 text-white" />
                     </div>
-                    
-                    <div className="space-y-4">
-                      <Label htmlFor="salary" className="text-sm font-medium text-gray-700">
-                        Gaji Pokok Baru (Rp)
+                    Kelola Gaji
+                  </SheetTitle>
+                </SheetHeader>
+                {selectedEmployee && (
+                  <div className="flex items-center gap-3 mt-4">
+                    <Avatar className="h-11 w-11 ring-2 ring-white/30">
+                      <AvatarFallback className="bg-white/20 text-white font-bold text-sm">
+                        {selectedEmployee.name.split(" ").map((n) => n[0]).join("").toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="text-white font-semibold">{selectedEmployee.name}</p>
+                      <p className="text-red-100 text-sm">{selectedEmployee.position || 'Karyawan'} · {selectedEmployee.branch}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Content — scrollable */}
+              <div className="flex-1 overflow-y-auto">
+                <Tabs defaultValue="gaji" className="w-full">
+                  <div className="px-6 pt-5 pb-0 border-b border-gray-100">
+                    <TabsList className="grid w-full grid-cols-2 bg-gray-100 rounded-xl p-1 h-11">
+                      <TabsTrigger value="gaji" className="rounded-lg text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-red-600 data-[state=active]:shadow-sm">
+                        <DollarSign className="h-4 w-4 mr-1.5" />
+                        Gaji Pokok
+                      </TabsTrigger>
+                      <TabsTrigger value="komisi" className="rounded-lg text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-red-600 data-[state=active]:shadow-sm">
+                        <TrendingUp className="h-4 w-4 mr-1.5" />
+                        Komisi & Point
+                      </TabsTrigger>
+                    </TabsList>
+                  </div>
+
+                  <TabsContent value="gaji" className="p-6 space-y-5 m-0">
+                    {/* Current salary summary */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-green-50 border border-green-100 rounded-xl p-4 text-center">
+                        <p className="text-xs text-green-700 font-medium mb-1">Gaji Pokok Saat Ini</p>
+                        <p className="text-lg font-bold text-green-700">
+                          Rp {formatNominal(selectedEmployee?.baseSalary || 0)}
+                        </p>
+                      </div>
+                      <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-4 text-center">
+                        <p className="text-xs text-yellow-700 font-medium mb-1">Komisi Bulan Ini</p>
+                        <p className="text-lg font-bold text-yellow-700">
+                          Rp {formatNominal(getEarnedCommission(selectedEmployee?.id || ''))}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Total gaji bersih */}
+                    <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-100 rounded-xl p-4">
+                      <p className="text-sm text-gray-600 mb-1">Total Gaji Bersih</p>
+                      <p className="text-2xl font-bold text-red-600">
+                        Rp {formatNominal(calculateTotalSalary(selectedEmployee || {} as Employee))}
+                      </p>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        <Badge variant="secondary" className="bg-blue-100 text-blue-700 text-xs">
+                          Bonus: Rp {formatNominal(getBonusPenaltyData(selectedEmployee?.id || '').bonus)}
+                        </Badge>
+                        <Badge variant="secondary" className="bg-red-100 text-red-700 text-xs">
+                          Penalti: Rp {formatNominal(getBonusPenaltyData(selectedEmployee?.id || '').penalty)}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* Update salary form */}
+                    <div className="space-y-3">
+                      <Label htmlFor="salary" className="text-sm font-semibold text-gray-700">
+                        Ubah Gaji Pokok (Rp)
                       </Label>
-                      <Input 
-                        id="salary" 
-                        type="text" 
-                        value={newBaseSalary} 
+                      <Input
+                        id="salary"
+                        type="text"
+                        value={newBaseSalary}
                         onChange={(e) => setNewBaseSalary(formatNominal(e.target.value))}
-                        className="text-lg border-red-200 focus:border-red-400"
-                        placeholder="Masukkan gaji pokok baru..."
+                        className="h-12 text-base border-gray-200 focus:border-red-400 focus:ring-red-400 rounded-xl"
+                        placeholder="Contoh: 3.000.000"
                       />
-                      <Button 
-                        onClick={handleUpdateBaseSalary} 
-                        disabled={loading || !newBaseSalary} 
-                        className="w-full bg-red-600 hover:bg-red-700 text-white"
+                      <Button
+                        onClick={handleUpdateBaseSalary}
+                        disabled={loading || !newBaseSalary}
+                        className="w-full h-12 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold"
                       >
                         {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
                         Simpan Gaji Pokok
                       </Button>
                     </div>
-                  </div>
-                </TabsContent>
+                  </TabsContent>
 
-                <TabsContent value="komisi" className="pt-6">
-                  {/* Info Box - Komisi & Point Bulan Ini */}
-                  <div className="mb-6 p-4 bg-gradient-to-r from-red-50 to-yellow-50 border border-red-200 rounded-lg">
-                    <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                      <Award className="h-5 w-5 text-red-600" />
-                      Ringkasan Komisi & Point Bulan Ini
-                    </h4>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="text-center p-3 bg-white rounded-lg border border-green-200">
-                        <p className="text-xs text-gray-600 mb-1">Komisi Didapat</p>
-                        <p className="text-lg font-bold text-green-600">
+                  <TabsContent value="komisi" className="p-6 space-y-5 m-0">
+                    {/* Komisi summary cards */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="bg-green-50 border border-green-100 rounded-xl p-3 text-center">
+                        <p className="text-[10px] text-green-700 font-medium mb-1">Komisi Didapat</p>
+                        <p className="text-sm font-bold text-green-700 leading-tight">
                           Rp {formatNominal(getEarnedCommission(selectedEmployee?.id || ''))}
                         </p>
                       </div>
-                      <div className="text-center p-3 bg-white rounded-lg border border-blue-200">
-                        <p className="text-xs text-gray-600 mb-1">Bonus Point</p>
-                        <p className="text-lg font-bold text-blue-600">
+                      <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-center">
+                        <p className="text-[10px] text-blue-700 font-medium mb-1">Bonus Point</p>
+                        <p className="text-sm font-bold text-blue-700 leading-tight">
                           {getBonusPenaltyData(selectedEmployee?.id || '').bonus.toLocaleString('id-ID')}
                         </p>
                       </div>
-                      <div className="text-center p-3 bg-white rounded-lg border border-red-200">
-                        <p className="text-xs text-gray-600 mb-1">Penalty Point</p>
-                        <p className="text-lg font-bold text-red-600">
+                      <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-center">
+                        <p className="text-[10px] text-red-700 font-medium mb-1">Penalti Point</p>
+                        <p className="text-sm font-bold text-red-700 leading-tight">
                           {getBonusPenaltyData(selectedEmployee?.id || '').penalty.toLocaleString('id-ID')}
                         </p>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Info: Pengaturan komisi di menu terpisah */}
-                  <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <p className="text-sm text-blue-800">
-                      <strong>ℹ️ Info:</strong> Untuk menambah atau mengubah pengaturan komisi, silakan gunakan menu <strong>"Komisi & Point"</strong> di tab utama.
-                    </p>
-                  </div>
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                      <p className="text-sm text-blue-800">
+                        <strong>Info:</strong> Untuk menambah/mengubah aturan komisi, gunakan tab <strong>Komisi & Point</strong> di halaman utama.
+                      </p>
+                    </div>
 
-                  {/* Daftar Komisi Aktif - Full Width */}
-                  <div className="space-y-4 p-4 border border-gray-200 rounded-lg">
-                    <h4 className="font-semibold text-gray-800 flex items-center gap-2">
-                      <Award className="h-4 w-4 text-red-600" />
-                      Aturan Komisi Aktif ({selectedEmployee?.commissions?.length || 0})
-                    </h4>
-                      
-                    {selectedEmployee?.commissions?.length ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {selectedEmployee.commissions.map((comm) => {
-                          const potentialCommission = comm.commission_type === 'percentage'
-                            ? (comm.service_price || 0) * (comm.commission_value / 100)
-                            : comm.commission_value;
-
-                          return (
-                            <div key={comm.id} className="p-3 bg-gray-50 rounded-lg border hover:shadow-sm transition-shadow">
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-2">
-                                  <h5 className="font-semibold text-gray-800">{comm.service_name}</h5>
-                                  <Badge variant="outline" className="text-xs">
+                    {/* Komisi list */}
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                        <Award className="h-4 w-4 text-red-600" />
+                        Aturan Komisi Aktif ({selectedEmployee?.commissions?.length || 0})
+                      </h4>
+                      {selectedEmployee?.commissions?.length ? (
+                        <div className="space-y-3">
+                          {selectedEmployee.commissions.map((comm) => {
+                            const potentialCommission = comm.commission_type === 'percentage'
+                              ? (comm.service_price || 0) * (comm.commission_value / 100)
+                              : comm.commission_value;
+                            return (
+                              <div key={comm.id} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
+                                <div className="flex items-start justify-between gap-2 mb-3">
+                                  <p className="font-semibold text-gray-800 text-sm leading-tight">{comm.service_name}</p>
+                                  <Badge variant="outline" className="text-xs flex-shrink-0">
                                     {comm.commission_type === 'percentage' ? 'Persentase' : 'Tetap'}
                                   </Badge>
                                 </div>
-                                <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
-                                  <div className="flex justify-between">
-                                    <span>Harga Layanan:</span>
-                                    <span className="font-medium">Rp {formatNominal(comm.service_price || 0)}</span>
+                                <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 mb-3">
+                                  <div>
+                                    <span className="block">Harga Layanan</span>
+                                    <span className="font-semibold text-gray-700">Rp {formatNominal(comm.service_price || 0)}</span>
                                   </div>
-                                  <div className="flex justify-between">
-                                    <span>Rate Komisi:</span>
-                                    <span className="font-medium">
-                                      {comm.commission_type === 'percentage' 
-                                        ? `${comm.commission_value}%` 
-                                        : `Rp ${formatNominal(comm.commission_value)}`
-                                      }
+                                  <div>
+                                    <span className="block">Rate Komisi</span>
+                                    <span className="font-semibold text-gray-700">
+                                      {comm.commission_type === 'percentage'
+                                        ? `${comm.commission_value}%`
+                                        : `Rp ${formatNominal(comm.commission_value)}`}
                                     </span>
                                   </div>
                                 </div>
-                                <div className="flex justify-between items-center pt-2 border-t border-gray-200">
-                                  <span className="text-sm font-medium text-gray-700">Potensi per Transaksi:</span>
-                                  <span className="font-bold text-green-600">Rp {formatNominal(potentialCommission)}</span>
+                                <div className="flex justify-between items-center bg-green-50 rounded-lg px-3 py-2">
+                                  <span className="text-xs text-gray-600">Potensi per Transaksi</span>
+                                  <span className="text-sm font-bold text-green-700">Rp {formatNominal(potentialCommission)}</span>
                                 </div>
                               </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="text-center py-8 text-gray-500">
-                        <Package className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                        <p className="text-sm">Belum ada pengaturan komisi</p>
-                        <p className="text-xs text-gray-400 mt-1">Silakan atur komisi di menu "Komisi & Point"</p>
-                      </div>
-                    )}
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={showSlipModal} onOpenChange={setShowSlipModal}>
-            <DialogContent className="max-w-[95vw] md:max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader className="border-b border-gray-200 pb-3 md:pb-4">
-                <DialogTitle className="text-base md:text-xl text-gray-800 flex items-center gap-2">
-                  <Receipt className="h-4 w-4 md:h-5 md:w-5 text-red-600" />
-                  <span className="truncate">Slip Gaji - {selectedEmployee?.name}</span>
-                </DialogTitle>
-              </DialogHeader>
-
-              {selectedEmployee && (
-                <div className="space-y-4 md:space-y-6 py-3 md:py-4">
-                  <div className="border border-gray-200 rounded-lg bg-white shadow-sm">
-                    <div className="p-4 md:p-6 bg-gradient-to-r from-red-50 to-gray-50 border-b border-gray-200 rounded-t-lg">
-                      <h3 className="text-center text-lg md:text-2xl font-bold text-gray-800 mb-1 md:mb-2">SLIP GAJI</h3>
-                      <p className="text-center text-xs md:text-sm text-gray-600">PT. Barbershop Indonesia</p>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-center py-10">
+                          <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <Package className="h-7 w-7 text-gray-400" />
+                          </div>
+                          <p className="text-sm font-medium text-gray-600">Belum ada aturan komisi</p>
+                          <p className="text-xs text-gray-400 mt-1">Atur komisi di menu "Komisi & Point"</p>
+                        </div>
+                      )}
                     </div>
-                    <div className="p-4 md:p-6">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 text-xs md:text-sm mb-4 md:mb-6 pb-3 md:pb-4 border-b border-gray-200">
-                          <div className="space-y-1">
-                              <p className="truncate"><span className="text-gray-600">Nama:</span> <span className="font-semibold">{selectedEmployee.name}</span></p>
-                              <p className="truncate"><span className="text-gray-600">Email:</span> <span className="font-semibold">{selectedEmployee.email}</span></p>
-                              <p className="truncate"><span className="text-gray-600">Posisi:</span> <span className="font-semibold">{selectedEmployee.position || 'Karyawan'}</span></p>
-                              <p className="truncate"><span className="text-gray-600">Cabang:</span> <span className="font-semibold">{selectedEmployee.branch}</span></p>
-                          </div>
-                          <div className="text-left sm:text-right space-y-1">
-                              <p><span className="text-gray-600">Tanggal:</span> <span className="font-semibold">{new Date().toLocaleDateString('id-ID')}</span></p>
-                              <p><span className="text-gray-600">Periode:</span> <span className="font-semibold">{new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}</span></p>
-                              <p><span className="text-gray-600">Status:</span> <span className="font-semibold">{selectedEmployee.status}</span></p>
-                          </div>
-                      </div>
-                      <div className="mb-4 md:mb-6">
-                          <h4 className="font-semibold text-sm md:text-base text-gray-800 border-b border-red-200 pb-2 mb-3 flex items-center gap-2">
-                              <TrendingUp className="h-3.5 w-3.5 md:h-4 md:w-4 text-green-600" /> PENDAPATAN
-                          </h4>
-                          <div className="space-y-2 text-xs md:text-sm">
-                              <div className="flex justify-between items-center py-1">
-                                  <span className="text-gray-600">Gaji Pokok</span>
-                                  <span className="font-medium">Rp {formatNominal(selectedEmployee.baseSalary || 0)}</span>
-                              </div>
-                              <div className="flex justify-between items-center py-1">
-                                  <span className="text-gray-600">Komisi Didapat</span>
-                                  <span className="font-medium text-green-600">+ Rp {formatNominal(getEarnedCommission(selectedEmployee.id))}</span>
-                              </div>
-                              <div className="flex justify-between items-center py-1">
-                                  <span className="text-gray-600">Bonus</span>
-                                  <span className="font-medium text-green-600">+ Rp {formatNominal(getBonusPenaltyData(selectedEmployee.id).bonus)}</span>
-                              </div>
-                          </div>
-                      </div>
-                      <div className="mb-4 md:mb-6">
-                          <h4 className="font-semibold text-sm md:text-base text-gray-800 border-b border-red-200 pb-2 mb-3 flex items-center gap-2">
-                              <AlertCircle className="h-3.5 w-3.5 md:h-4 md:w-4 text-red-600" /> POTONGAN
-                          </h4>
-                          <div className="space-y-2 text-xs md:text-sm">
-                              <div className="flex justify-between items-center py-1">
-                                  <span className="text-gray-600">Denda/Penalti</span>
-                                  <span className="font-medium text-red-600">- Rp {formatNominal(getBonusPenaltyData(selectedEmployee.id).penalty)}</span>
-                              </div>
-                          </div>
-                      </div>
-                      <div className="border-t-2 border-red-200 pt-3 md:pt-4">
-                          <div className="flex justify-between items-center font-bold text-base md:text-lg bg-red-50 p-3 md:p-4 rounded-lg">
-                              <span className="text-gray-800 text-sm md:text-base">GAJI BERSIH</span>
-                              <span className="text-red-600 text-lg md:text-xl">Rp {formatNominal(calculateTotalSalary(selectedEmployee))}</span>
-                          </div>
+                  </TabsContent>
+                </Tabs>
+              </div>
+            </SheetContent>
+          </Sheet>
+
+          {/* Sheet: Slip Gaji — modern side panel */}
+          <Sheet open={showSlipModal} onOpenChange={setShowSlipModal}>
+            <SheetContent side="right" className="w-full sm:max-w-lg p-0 overflow-hidden flex flex-col">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-slate-800 to-slate-700 px-6 py-5 flex-shrink-0">
+                <SheetHeader>
+                  <SheetTitle className="text-white text-xl font-bold flex items-center gap-3">
+                    <div className="p-2 bg-white/20 rounded-lg">
+                      <Receipt className="h-5 w-5 text-white" />
+                    </div>
+                    Slip Gaji
+                  </SheetTitle>
+                </SheetHeader>
+                {selectedEmployee && (
+                  <div className="flex items-center gap-3 mt-4">
+                    <Avatar className="h-11 w-11 ring-2 ring-white/30">
+                      <AvatarFallback className="bg-white/20 text-white font-bold text-sm">
+                        {selectedEmployee.name.split(" ").map((n) => n[0]).join("").toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="text-white font-semibold">{selectedEmployee.name}</p>
+                      <p className="text-slate-300 text-sm">{selectedEmployee.position || 'Karyawan'}</p>
+                    </div>
+                    <Badge className="ml-auto bg-white/20 text-white border-0 text-xs">
+                      {new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+                    </Badge>
+                  </div>
+                )}
+              </div>
+
+              {/* Content — scrollable */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {selectedEmployee && (
+                  <div className="space-y-5">
+                    {/* Employee info */}
+                    <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+                      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Info Karyawan</h4>
+                      <div className="grid grid-cols-2 gap-y-2 text-sm">
+                        <span className="text-gray-500">Email</span>
+                        <span className="font-medium text-gray-800 text-right truncate">{selectedEmployee.email}</span>
+                        <span className="text-gray-500">Posisi</span>
+                        <span className="font-medium text-gray-800 text-right">{selectedEmployee.position || 'Karyawan'}</span>
+                        <span className="text-gray-500">Cabang</span>
+                        <span className="font-medium text-gray-800 text-right">{selectedEmployee.branch}</span>
+                        <span className="text-gray-500">Status</span>
+                        <span className="font-medium text-gray-800 text-right capitalize">{selectedEmployee.status}</span>
                       </div>
                     </div>
+
+                    {/* Pendapatan */}
+                    <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
+                      <div className="flex items-center gap-2 px-4 py-3 bg-green-50 border-b border-green-100">
+                        <TrendingUp className="h-4 w-4 text-green-600" />
+                        <span className="text-sm font-semibold text-green-700">Pendapatan</span>
+                      </div>
+                      <div className="divide-y divide-gray-50 px-4">
+                        <div className="flex justify-between items-center py-3">
+                          <span className="text-sm text-gray-600">Gaji Pokok</span>
+                          <span className="text-sm font-semibold text-gray-800">Rp {formatNominal(selectedEmployee.baseSalary || 0)}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-3">
+                          <span className="text-sm text-gray-600">Komisi Didapat</span>
+                          <span className="text-sm font-semibold text-green-600">+ Rp {formatNominal(getEarnedCommission(selectedEmployee.id))}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-3">
+                          <span className="text-sm text-gray-600">Bonus</span>
+                          <span className="text-sm font-semibold text-green-600">+ Rp {formatNominal(getBonusPenaltyData(selectedEmployee.id).bonus)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Potongan */}
+                    <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
+                      <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border-b border-red-100">
+                        <AlertCircle className="h-4 w-4 text-red-600" />
+                        <span className="text-sm font-semibold text-red-700">Potongan</span>
+                      </div>
+                      <div className="px-4">
+                        <div className="flex justify-between items-center py-3">
+                          <span className="text-sm text-gray-600">Denda / Penalti</span>
+                          <span className="text-sm font-semibold text-red-600">- Rp {formatNominal(getBonusPenaltyData(selectedEmployee.id).penalty)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Total gaji bersih */}
+                    <div className="bg-gradient-to-r from-red-600 to-orange-500 rounded-xl p-5 text-white">
+                      <p className="text-sm text-red-100 mb-1">GAJI BERSIH</p>
+                      <p className="text-3xl font-bold">Rp {formatNominal(calculateTotalSalary(selectedEmployee))}</p>
+                      <p className="text-xs text-red-100 mt-2">
+                        Per {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-2 md:gap-3">
-                    <Button onClick={handlePrintSlip} className="flex-1 bg-red-600 hover:bg-red-700 text-white h-10 text-sm">
-                        <Printer className="h-3.5 w-3.5 md:h-4 md:w-4 mr-2" /> 
-                        <span className="truncate">Cetak Slip Gaji</span>
-                    </Button>
-                    <Button variant="outline" onClick={() => setShowSlipModal(false)} className="border-red-200 text-red-600 hover:bg-red-50 h-10 text-sm">
-                        Tutup
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </DialogContent>
-          </Dialog>
+                )}
+              </div>
+
+              {/* Footer — actions */}
+              <div className="flex-shrink-0 border-t border-gray-100 px-6 py-4 flex gap-3">
+                <Button onClick={handlePrintSlip} className="flex-1 h-11 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold">
+                  <Printer className="h-4 w-4 mr-2" />
+                  Cetak Slip Gaji
+                </Button>
+                <Button variant="outline" onClick={() => setShowSlipModal(false)} className="h-11 px-5 rounded-xl border-gray-200 text-gray-600 hover:bg-gray-50">
+                  Tutup
+                </Button>
+              </div>
+            </SheetContent>
+          </Sheet>
         </CardContent>
       </Card>
     </div>

@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,12 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { 
     Settings, Trash2, CheckCircle, XCircle, Loader2, 
-    Users, DollarSign, AlertTriangle, 
+    Users, DollarSign, AlertTriangle, TrendingUp,
     Sparkles, Search, Download, Eye, Edit
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
@@ -131,7 +132,7 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
             .on('postgres_changes', 
                 { event: '*', schema: 'public', table: 'transaction_items' },
                 (payload) => {
-                    console.log('📡 Transaction change detected, reloading...');
+                    console.log('ðŸ“¡ Transaction change detected, reloading...');
                     loadData();
                 }
             )
@@ -142,7 +143,7 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
             .on('postgres_changes',
                 { event: '*', schema: 'public', table: 'commission_rules' },
                 (payload) => {
-                    console.log('📡 Commission rule change detected, reloading...');
+                    console.log('ðŸ“¡ Commission rule change detected, reloading...');
                     loadData();
                 }
             )
@@ -330,64 +331,50 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
 
         setLoading(true);
         try {
-            console.log('Saving commission:', {
-                user_id: selectedEmployee.id,
-                service_id: selectedService,
-                commission_type: commissionType,
-                commission_value: value,
-                editMode,
-                editingCommissionId
-            });
-
             if (editMode && editingCommissionId) {
-                // Update via API route (Drizzle ORM - server side)
-                console.log('Updating commission with ID:', editingCommissionId);
-                const res = await fetch('/api/commissions', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        id: editingCommissionId,
+                // Update langsung via Supabase client
+                const { error } = await supabase
+                    .from('commission_rules')
+                    .update({
                         commission_type: commissionType,
-                        commission_value: value
+                        commission_value: value,
                     })
-                });
-                const json = await res.json();
-                if (!res.ok) {
-                    console.error('Update error:', json);
-                    throw new Error(json.error || 'Gagal update komisi');
-                }
-                console.log('Update result:', json);
+                    .eq('id', editingCommissionId)
+
+                if (error) throw new Error(error.message)
             } else {
-                // Insert via API route (Drizzle ORM - server side)
-                console.log('Inserting new commission');
-                const res = await fetch('/api/commissions', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        user_id: selectedEmployee.id,
-                        service_id: selectedService,
-                        commission_type: commissionType,
-                        commission_value: value
-                    })
-                });
-                const json = await res.json();
-                if (res.status === 409) {
+                // Cek duplikat dulu
+                const { data: existing } = await supabase
+                    .from('commission_rules')
+                    .select('id')
+                    .eq('user_id', parseInt(selectedEmployee.id))
+                    .eq('service_id', parseInt(selectedService))
+                    .maybeSingle()
+
+                if (existing) {
                     toast({
                         title: "Komisi Sudah Ada",
-                        description: "Komisi untuk layanan ini sudah diatur. Silakan gunakan tombol Edit untuk mengubahnya.",
+                        description: "Komisi untuk layanan ini sudah diatur. Gunakan tombol Edit.",
                         variant: "destructive"
                     });
                     setLoading(false);
                     return;
                 }
-                if (!res.ok) {
-                    console.error('Insert error:', json);
-                    throw new Error(json.error || 'Gagal simpan komisi');
-                }
-                console.log('Insert result:', json);
-            }
 
-            console.log('Commission saved successfully.');
+                // Insert baru
+                const { error } = await supabase
+                    .from('commission_rules')
+                    .insert({
+                        user_id: parseInt(selectedEmployee.id),
+                        service_id: parseInt(selectedService),
+                        commission_type: commissionType,
+                        commission_value: value,
+                        commission_rate: value,
+                        is_active: true,
+                    })
+
+                if (error) throw new Error(error.message)
+            }
 
             toast({
                 title: "Berhasil",
@@ -635,7 +622,7 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                                                 </div>
                                                 <p className="font-semibold text-gray-800">{transaction.barber_name}</p>
                                                 <p className="text-sm text-gray-600">
-                                                    {transaction.service_name} • {formatRupiah(transaction.unit_price)} x {transaction.quantity}
+                                                    {transaction.service_name} â€¢ {formatRupiah(transaction.unit_price)} x {transaction.quantity}
                                                 </p>
                                                 <p className="text-lg font-bold text-red-600 mt-1">
                                                     Total: {formatRupiah(transaction.unit_price * transaction.quantity)}
@@ -1010,245 +997,283 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                 </CardContent>
             </Card>
 
-            {/* Dialog: Add Commission */}
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>{editMode ? 'Edit Komisi' : 'Atur Komisi'} - {selectedEmployee?.name}</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div className="space-y-2">
-                            <Label>Pilih Layanan</Label>
-                            <Select 
-                                value={selectedService} 
-                                onValueChange={setSelectedService}
-                                disabled={editMode}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Pilih layanan..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {editMode ? (
-                                        // Saat edit, tampilkan layanan yang sedang diedit
-                                        services
-                                            .filter(s => s.id === selectedService)
-                                            .map(service => (
+            {/* Sheet: Atur/Edit Komisi — modern side panel */}
+            <Sheet open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <SheetContent side="right" className="w-full sm:max-w-md p-0 overflow-hidden flex flex-col">
+                  {/* Header */}
+                  <div className="bg-gradient-to-r from-red-600 to-orange-500 px-6 py-5 flex-shrink-0">
+                    <SheetHeader>
+                      <SheetTitle className="text-white text-xl font-bold flex items-center gap-3">
+                        <div className="p-2 bg-white/20 rounded-lg">
+                          <TrendingUp className="h-5 w-5 text-white" />
+                        </div>
+                        {editMode ? 'Edit Komisi' : 'Atur Komisi'}
+                      </SheetTitle>
+                    </SheetHeader>
+                    {selectedEmployee && (
+                      <div className="flex items-center gap-3 mt-4">
+                        <Avatar className="h-10 w-10 ring-2 ring-white/30">
+                          <AvatarFallback className="bg-white/20 text-white font-bold text-sm">
+                            {selectedEmployee.name.split(" ").map((n: string) => n[0]).join("").toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="text-white font-semibold">{selectedEmployee.name}</p>
+                          <p className="text-red-100 text-sm">{selectedEmployee.position || 'Karyawan'}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                    <div className="space-y-2">
+                        <Label className="text-sm font-semibold text-gray-700">Pilih Layanan</Label>
+                        <Select
+                            value={selectedService}
+                            onValueChange={setSelectedService}
+                            disabled={editMode}
+                        >
+                            <SelectTrigger className="h-11 rounded-xl border-gray-200">
+                                <SelectValue placeholder="Pilih layanan..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {editMode ? (
+                                    services
+                                        .filter((s: any) => s.id === selectedService)
+                                        .map((service: any) => (
+                                            <SelectItem key={service.id} value={service.id}>
+                                                {service.name} - {formatRupiah(service.price)}
+                                            </SelectItem>
+                                        ))
+                                ) : (
+                                    selectedEmployee &&
+                                        employeeStatuses
+                                            .find((s: any) => s.employee.id === selectedEmployee.id)
+                                            ?.missingServices.map((service: any) => (
                                                 <SelectItem key={service.id} value={service.id}>
                                                     {service.name} - {formatRupiah(service.price)}
                                                 </SelectItem>
                                             ))
-                                    ) : (
-                                        // Saat tambah, tampilkan layanan yang belum diatur
-                                        selectedEmployee && 
-                                            employeeStatuses
-                                                .find(s => s.employee.id === selectedEmployee.id)
-                                                ?.missingServices.map(service => (
-                                                    <SelectItem key={service.id} value={service.id}>
-                                                        {service.name} - {formatRupiah(service.price)}
-                                                    </SelectItem>
-                                                ))
-                                    )}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                                )}
+                            </SelectContent>
+                        </Select>
+                    </div>
 
-                        <div className="space-y-2">
-                            <Label>Tipe Komisi</Label>
-                            <Select 
-                                value={commissionType} 
-                                onValueChange={(value: 'percentage' | 'fixed') => setCommissionType(value)}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="percentage">Persentase (%)</SelectItem>
-                                    <SelectItem value="fixed">Nominal Tetap (Rp)</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label>
-                                Nilai Komisi {commissionType === 'percentage' ? '(%)' : '(Rp)'}
-                            </Label>
-                            <Input
-                                type="text"
-                                value={commissionType === 'percentage' ? commissionValue : formatNominal(commissionValue)}
-                                onChange={(e) => {
-                                    const value = e.target.value;
-                                    if (commissionType === 'percentage') {
-                                        // Untuk percentage, hanya angka tanpa format
-                                        const numericValue = value.replace(/[^0-9]/g, '');
-                                        setCommissionValue(numericValue);
-                                    } else {
-                                        // Untuk fixed, simpan angka murni tapi tampilkan dengan format
-                                        const numericValue = value.replace(/[^0-9]/g, '');
-                                        setCommissionValue(numericValue);
-                                    }
-                                }}
-                                placeholder={commissionType === 'percentage' ? 'Contoh: 10' : 'Contoh: 50.000'}
-                            />
-                            {commissionType === 'percentage' && commissionValue && (
-                                <div className="text-xs text-gray-600 bg-gray-50 rounded p-2 space-y-0.5">
-                                    <p>= <span className="font-medium">{parseNominal(commissionValue)}%</span> dari harga layanan</p>
-                                    {selectedService && (() => {
-                                        const svc = services.find(s => s.id === selectedService)
-                                        if (!svc) return null
-                                        const nominal = Math.round(svc.price * parseNominal(commissionValue) / 100)
-                                        return (
-                                            <p className="text-green-700 font-semibold">
-                                                = Rp {nominal.toLocaleString('id-ID')} per transaksi
-                                                <span className="text-gray-400 font-normal ml-1">(dari Rp {Number(svc.price).toLocaleString('id-ID')})</span>
-                                            </p>
-                                        )
-                                    })()}
-                                </div>
-                            )}
-                            {commissionType === 'fixed' && commissionValue && (
-                                <div className="text-xs text-gray-600 bg-gray-50 rounded p-2">
-                                    <p>= <span className="text-green-700 font-semibold">Rp {formatRupiah(parseNominal(commissionValue))}</span> per transaksi (nominal tetap)</p>
-                                </div>
-                            )}
+                    <div className="space-y-2">
+                        <Label className="text-sm font-semibold text-gray-700">Tipe Komisi</Label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setCommissionType('percentage')}
+                            className={`h-11 rounded-xl border-2 text-sm font-medium transition-all ${
+                              commissionType === 'percentage'
+                                ? 'border-red-500 bg-red-50 text-red-700'
+                                : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                            }`}
+                          >
+                            Persentase (%)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCommissionType('fixed')}
+                            className={`h-11 rounded-xl border-2 text-sm font-medium transition-all ${
+                              commissionType === 'fixed'
+                                ? 'border-red-500 bg-red-50 text-red-700'
+                                : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                            }`}
+                          >
+                            Nominal Tetap (Rp)
+                          </button>
                         </div>
                     </div>
 
-                    <div className="flex gap-2">
-                        <Button 
-                            variant="outline" 
-                            onClick={() => setIsDialogOpen(false)}
-                            className="flex-1"
-                        >
-                            Batal
-                        </Button>
-                        <Button 
-                            onClick={handleSaveCommission}
-                            disabled={loading}
-                            className="flex-1 bg-red-600 hover:bg-red-700"
-                        >
-                            {loading ? (
-                                <>
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    Menyimpan...
-                                </>
-                            ) : (
-                                'Simpan Komisi'
-                            )}
-                        </Button>
+                    <div className="space-y-2">
+                        <Label className="text-sm font-semibold text-gray-700">
+                            Nilai Komisi {commissionType === 'percentage' ? '(%)' : '(Rp)'}
+                        </Label>
+                        <Input
+                            type="text"
+                            value={commissionType === 'percentage' ? commissionValue : formatNominal(commissionValue)}
+                            onChange={(e) => {
+                                const value = e.target.value;
+                                const numericValue = value.replace(/[^0-9]/g, '');
+                                setCommissionValue(numericValue);
+                            }}
+                            placeholder={commissionType === 'percentage' ? 'Contoh: 10' : 'Contoh: 50.000'}
+                            className="h-11 rounded-xl border-gray-200 text-base"
+                        />
+                        {commissionType === 'percentage' && commissionValue && (
+                            <div className="text-xs text-gray-600 bg-gray-50 rounded-xl p-3 space-y-1">
+                                <p>= <span className="font-medium">{parseNominal(commissionValue)}%</span> dari harga layanan</p>
+                                {selectedService && (() => {
+                                    const svc = services.find((s: any) => s.id === selectedService)
+                                    if (!svc) return null
+                                    const nominal = Math.round(svc.price * parseNominal(commissionValue) / 100)
+                                    return (
+                                        <p className="text-green-700 font-semibold">
+                                            = Rp {nominal.toLocaleString('id-ID')} per transaksi
+                                            <span className="text-gray-400 font-normal ml-1">(dari Rp {Number(svc.price).toLocaleString('id-ID')})</span>
+                                        </p>
+                                    )
+                                })()}
+                            </div>
+                        )}
+                        {commissionType === 'fixed' && commissionValue && (
+                            <div className="text-xs bg-green-50 border border-green-100 rounded-xl p-3">
+                                <p className="text-green-700 font-semibold">= Rp {formatRupiah(parseNominal(commissionValue))} per transaksi (nominal tetap)</p>
+                            </div>
+                        )}
                     </div>
-                </DialogContent>
-            </Dialog>
+                  </div>
 
-            {/* Dialog: Transaction Commission */}
-            <Dialog open={isTransactionDialogOpen} onOpenChange={setIsTransactionDialogOpen}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>Atur Komisi Transaksi</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                            <p className="font-semibold text-gray-800 mb-2">{selectedTransaction?.barber_name}</p>
-                            <p className="text-sm text-gray-600 mb-1">{selectedTransaction?.service_name}</p>
-                            <p className="text-lg font-bold text-red-600">
-                                {selectedTransaction && formatRupiah(selectedTransaction.unit_price * selectedTransaction.quantity)}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">
-                                {selectedTransaction && new Date(selectedTransaction.created_at).toLocaleDateString('id-ID', {
-                                    day: 'numeric',
-                                    month: 'long',
-                                    year: 'numeric'
-                                })}
-                            </p>
+                  {/* Footer */}
+                  <div className="flex-shrink-0 border-t border-gray-100 px-6 py-4 flex gap-3">
+                    <Button
+                        variant="outline"
+                        onClick={() => setIsDialogOpen(false)}
+                        className="flex-1 h-11 rounded-xl border-gray-200 text-gray-600"
+                    >
+                        Batal
+                    </Button>
+                    <Button
+                        onClick={handleSaveCommission}
+                        disabled={loading}
+                        className="flex-1 h-11 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold"
+                    >
+                        {loading ? (
+                            <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Menyimpan...</>
+                        ) : (
+                            'Simpan Komisi'
+                        )}
+                    </Button>
+                  </div>
+                </SheetContent>
+            </Sheet>
+
+            {/* Sheet: Komisi Transaksi — modern side panel */}
+            <Sheet open={isTransactionDialogOpen} onOpenChange={setIsTransactionDialogOpen}>
+                <SheetContent side="right" className="w-full sm:max-w-md p-0 overflow-hidden flex flex-col">
+                  {/* Header */}
+                  <div className="bg-gradient-to-r from-slate-700 to-slate-600 px-6 py-5 flex-shrink-0">
+                    <SheetHeader>
+                      <SheetTitle className="text-white text-xl font-bold flex items-center gap-3">
+                        <div className="p-2 bg-white/20 rounded-lg">
+                          <DollarSign className="h-5 w-5 text-white" />
                         </div>
+                        Komisi Transaksi
+                      </SheetTitle>
+                    </SheetHeader>
+                    {selectedTransaction && (
+                      <div className="mt-4 bg-white/10 rounded-xl p-4 space-y-1">
+                        <p className="text-white font-semibold">{selectedTransaction.barber_name}</p>
+                        <p className="text-slate-300 text-sm">{selectedTransaction.service_name}</p>
+                        <p className="text-white text-xl font-bold mt-1">
+                          {formatRupiah(selectedTransaction.unit_price * selectedTransaction.quantity)}
+                        </p>
+                        <p className="text-slate-400 text-xs">
+                          {new Date(selectedTransaction.created_at).toLocaleDateString('id-ID', {
+                            day: 'numeric', month: 'long', year: 'numeric'
+                          })}
+                        </p>
+                      </div>
+                    )}
+                  </div>
 
-                        <div className="space-y-2">
-                            <Label>Tipe Komisi</Label>
-                            <Select 
-                                value={commissionType} 
-                                onValueChange={(value: 'percentage' | 'fixed') => setCommissionType(value)}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="percentage">Persentase (%)</SelectItem>
-                                    <SelectItem value="fixed">Nominal Tetap (Rp)</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label>Nilai Komisi {commissionType === 'percentage' ? '(%)' : '(Rp)'}</Label>
-                            <Input
-                                type="text"
-                                value={commissionType === 'percentage' ? commissionValue : formatNominal(commissionValue)}
-                                onChange={(e) => {
-                                    const value = e.target.value;
-                                    if (commissionType === 'percentage') {
-                                        // Untuk percentage, hanya angka tanpa format
-                                        const numericValue = value.replace(/[^0-9]/g, '');
-                                        setCommissionValue(numericValue);
-                                    } else {
-                                        // Untuk fixed, simpan angka murni tapi tampilkan dengan format
-                                        const numericValue = value.replace(/[^0-9]/g, '');
-                                        setCommissionValue(numericValue);
-                                    }
-                                }}
-                                placeholder={commissionType === 'percentage' ? '10' : '50.000'}
-                            />
-                            {selectedTransaction && commissionType === 'percentage' && commissionValue && (
-                                <div className="text-xs bg-green-50 border border-green-200 p-2 rounded space-y-0.5">
-                                    <p className="text-gray-600">
-                                        {parseNominal(commissionValue)}% × Rp {Number(selectedTransaction.unit_price * selectedTransaction.quantity).toLocaleString('id-ID')}
-                                    </p>
-                                    <p className="text-green-700 font-semibold text-sm">
-                                        = Rp {formatRupiah((selectedTransaction.unit_price * selectedTransaction.quantity * parseNominal(commissionValue)) / 100)} komisi
-                                    </p>
-                                </div>
-                            )}
-                            {commissionType === 'fixed' && commissionValue && (
-                                <div className="text-xs bg-green-50 border border-green-200 p-2 rounded">
-                                    <p className="text-green-700 font-semibold text-sm">
-                                        = Rp {formatRupiah(parseNominal(commissionValue))} per transaksi (nominal tetap)
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                            <p className="text-xs text-blue-800">
-                                <strong>💾 Auto-Save:</strong> Komisi ini akan langsung tersimpan di database dan 
-                                dihitung dalam sistem penggajian bulan ini!
-                            </p>
+                  {/* Content */}
+                  <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                    <div className="space-y-2">
+                        <Label className="text-sm font-semibold text-gray-700">Tipe Komisi</Label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setCommissionType('percentage')}
+                            className={`h-11 rounded-xl border-2 text-sm font-medium transition-all ${
+                              commissionType === 'percentage'
+                                ? 'border-red-500 bg-red-50 text-red-700'
+                                : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                            }`}
+                          >
+                            Persentase (%)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCommissionType('fixed')}
+                            className={`h-11 rounded-xl border-2 text-sm font-medium transition-all ${
+                              commissionType === 'fixed'
+                                ? 'border-red-500 bg-red-50 text-red-700'
+                                : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                            }`}
+                          >
+                            Nominal Tetap (Rp)
+                          </button>
                         </div>
                     </div>
 
-                    <div className="flex gap-2">
-                        <Button 
-                            variant="outline" 
-                            onClick={() => setIsTransactionDialogOpen(false)}
-                            className="flex-1"
-                            disabled={loading}
-                        >
-                            Batal
-                        </Button>
-                        <Button 
-                            onClick={handleSaveTransactionCommission}
-                            disabled={loading}
-                            className="flex-1 bg-red-600 hover:bg-red-700"
-                        >
-                            {loading ? (
-                                <>
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    Menyimpan...
-                                </>
-                            ) : (
-                                '💾 Simpan & Terapkan'
-                            )}
-                        </Button>
+                    <div className="space-y-2">
+                        <Label className="text-sm font-semibold text-gray-700">
+                            Nilai Komisi {commissionType === 'percentage' ? '(%)' : '(Rp)'}
+                        </Label>
+                        <Input
+                            type="text"
+                            value={commissionType === 'percentage' ? commissionValue : formatNominal(commissionValue)}
+                            onChange={(e) => {
+                                const numericValue = e.target.value.replace(/[^0-9]/g, '');
+                                setCommissionValue(numericValue);
+                            }}
+                            placeholder={commissionType === 'percentage' ? '10' : '50.000'}
+                            className="h-11 rounded-xl border-gray-200 text-base"
+                        />
+                        {selectedTransaction && commissionType === 'percentage' && commissionValue && (
+                            <div className="text-xs bg-green-50 border border-green-100 rounded-xl p-3 space-y-1">
+                                <p className="text-gray-600">
+                                    {parseNominal(commissionValue)}% x Rp {Number(selectedTransaction.unit_price * selectedTransaction.quantity).toLocaleString('id-ID')}
+                                </p>
+                                <p className="text-green-700 font-semibold text-sm">
+                                    = Rp {formatRupiah((selectedTransaction.unit_price * selectedTransaction.quantity * parseNominal(commissionValue)) / 100)} komisi
+                                </p>
+                            </div>
+                        )}
+                        {commissionType === 'fixed' && commissionValue && (
+                            <div className="text-xs bg-green-50 border border-green-100 rounded-xl p-3">
+                                <p className="text-green-700 font-semibold text-sm">
+                                    = Rp {formatRupiah(parseNominal(commissionValue))} per transaksi (nominal tetap)
+                                </p>
+                            </div>
+                        )}
                     </div>
-                </DialogContent>
-            </Dialog>
+
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                        <p className="text-xs text-blue-800">
+                            <strong>Auto-Save:</strong> Komisi ini akan langsung tersimpan di database dan dihitung dalam sistem penggajian bulan ini.
+                        </p>
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="flex-shrink-0 border-t border-gray-100 px-6 py-4 flex gap-3">
+                    <Button
+                        variant="outline"
+                        onClick={() => setIsTransactionDialogOpen(false)}
+                        disabled={loading}
+                        className="flex-1 h-11 rounded-xl border-gray-200 text-gray-600"
+                    >
+                        Batal
+                    </Button>
+                    <Button
+                        onClick={handleSaveTransactionCommission}
+                        disabled={loading}
+                        className="flex-1 h-11 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold"
+                    >
+                        {loading ? (
+                            <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Menyimpan...</>
+                        ) : (
+                            'Simpan & Terapkan'
+                        )}
+                    </Button>
+                  </div>
+                </SheetContent>
+            </Sheet>
         </div>
     );
 }
