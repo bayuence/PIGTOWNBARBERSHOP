@@ -1094,7 +1094,18 @@ export function POSSystem() {
                   >
                     <CardHeader className="p-3 md:p-4 pb-2">
                       <div className="flex items-start gap-2">
-                        <div className="w-8 h-8 md:w-10 md:h-10 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                        {service.image_url ? (
+                          <img
+                            src={service.image_url}
+                            alt={service.name}
+                            className="w-10 h-10 md:w-12 md:h-12 rounded-lg object-cover flex-shrink-0 border"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none'
+                              e.currentTarget.nextElementSibling?.classList.remove('hidden')
+                            }}
+                          />
+                        ) : null}
+                        <div className={`w-10 h-10 md:w-12 md:h-12 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0 ${service.image_url ? 'hidden' : ''}`}>
                           <IconComponent className="h-4 w-4 md:h-5 md:w-5 text-primary" />
                         </div>
                         <div className="flex-1 min-w-0">

@@ -77,6 +77,7 @@ export interface Service {
   stock?: number
   aktif?: boolean
   commission_rate?: number
+  image_url?: string
   created_at: string
 }
 
