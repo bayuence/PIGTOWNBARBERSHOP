@@ -40,6 +40,18 @@ import { useToast } from "@/hooks/use-toast"
 import { supabase, getOutletStock, updateOutletStock, getLowStockAlerts, type OutletStock } from "@/lib/supabase"
 import { Switch } from "@/components/ui/switch"
 
+const formatNominal = (value: string | number): string => {
+  if (!value && value !== 0) return "";
+  const stringValue = String(value).replace(/[^0-9]/g, '');
+  if (stringValue === "" || stringValue === "0") return "";
+  return new Intl.NumberFormat('id-ID').format(parseInt(stringValue, 10));
+};
+
+const parseNominal = (value: string): number => {
+  if (!value) return 0;
+  return parseInt(String(value).replace(/[^0-9]/g, ''), 10) || 0;
+};
+
 interface MenuCategory {
   id: string
   name: string
@@ -63,6 +75,7 @@ interface MenuItem {
   stock?: number
   status: "active" | "inactive"
   created_at: string
+  image_url?: string
   category?: {
     name: string
     icon: string
@@ -172,9 +185,12 @@ export function CashierManagement() {
     duration: 0,
     stock: 0,
     type: "service" as "service" | "product",
+    image_url: "",
   })
   const [editingCategory, setEditingCategory] = useState<MenuCategory | null>(null)
   const [editingMenuItem, setEditingMenuItem] = useState<MenuItem | null>(null)
+  const [menuImageFile, setMenuImageFile] = useState<File | null>(null)
+  const [menuImagePreview, setMenuImagePreview] = useState<string | null>(null)
 
   // NEW FUNCTIONS FOR OUTLET STOCK MANAGEMENT
   const fetchOutletStock = async (outletId: string) => {
@@ -294,6 +310,30 @@ export function CashierManagement() {
     }
   }
 
+  const uploadMenuImage = async (file: File): Promise<string | null> => {
+    try {
+      const fileExt = file.name.split(".").pop()
+      const fileName = `menu-${Date.now()}.${fileExt}`
+      const filePath = `menu-images/${fileName}`
+
+      const { data, error } = await supabase.storage.from("attendance-photos").upload(filePath, file, {
+        cacheControl: "3600",
+        upsert: false,
+      })
+
+      if (error) {
+        console.error("[v0] Error uploading menu image:", error)
+        return null
+      }
+
+      const { data: publicUrlData } = supabase.storage.from("attendance-photos").getPublicUrl(filePath)
+      return publicUrlData?.publicUrl || null
+    } catch (error) {
+      console.error("[v0] Error uploading menu image:", error)
+      return null
+    }
+  }
+
   const fetchCategories = async () => {
     try {
       setCategoriesLoading(true)
@@ -313,7 +353,15 @@ export function CashierManagement() {
       }
 
       console.log("[v0] Fetched categories:", data)
-      setCategories(data || [])
+      // Map database schema to frontend properties (mapping is_active to status)
+      const mappedCategories = (data || []).map((cat: any) => ({
+        ...cat,
+        status: cat.is_active ? "active" : "inactive",
+        type: cat.type || "service",
+        icon: cat.icon || "",
+        sort_order: cat.sort_order || 0,
+      }))
+      setCategories(mappedCategories)
     } catch (error) {
       console.error("[v0] Error:", error)
     } finally {
@@ -332,7 +380,6 @@ export function CashierManagement() {
           *,
           service_categories(id, name, description)
         `)
-        .eq("aktif", true)
         .order("created_at", { ascending: false })
       
       // Filter by type based on filterType
@@ -348,7 +395,12 @@ export function CashierManagement() {
       }
 
       console.log("[v0] Fetched menu items:", data)
-      setMenuItems(data || [])
+      // Map database schema to frontend properties (mapping aktif to status)
+      const mappedMenuItems = (data || []).map((item: any) => ({
+        ...item,
+        status: item.aktif ? "active" : "inactive"
+      }))
+      setMenuItems(mappedMenuItems)
     } catch (error) {
       console.error("[v0] Error:", error)
     } finally {
@@ -475,10 +527,8 @@ export function CashierManagement() {
           {
             name: categoryForm.name,
             description: categoryForm.description,
-            icon: categoryForm.icon,
             type: categoryForm.type,
-            sort_order: categoryForm.sort_order,
-            status: "active",
+            is_active: true,
           },
         ])
         .select()
@@ -487,7 +537,7 @@ export function CashierManagement() {
         console.error("[v0] Error creating category:", error)
         toast({
           title: "Error",
-          description: "Gagal membuat kategori",
+          description: `Gagal membuat kategori: ${error.message || ''}`,
           variant: "destructive",
         })
         return
@@ -499,7 +549,7 @@ export function CashierManagement() {
       })
 
       setIsAddCategoryDialogOpen(false)
-      setCategoryForm({ name: "", description: "", icon: "", sort_order: 0 })
+      setCategoryForm({ name: "", description: "", icon: "", type: "service", sort_order: 0 })
       fetchCategories()
     } catch (error) {
       console.error("[v0] Error:", error)
@@ -518,9 +568,7 @@ export function CashierManagement() {
         .update({
           name: categoryForm.name,
           description: categoryForm.description,
-          icon: categoryForm.icon,
           type: categoryForm.type,
-          sort_order: categoryForm.sort_order,
         })
         .eq("id", editingCategory.id)
 
@@ -528,7 +576,7 @@ export function CashierManagement() {
         console.error("[v0] Error updating category:", error)
         toast({
           title: "Error",
-          description: "Gagal mengupdate kategori",
+          description: `Gagal mengupdate kategori: ${error.message || ''}`,
           variant: "destructive",
         })
         return
@@ -631,6 +679,11 @@ export function CashierManagement() {
         }
       }
       
+      let imageUrl = ""
+      if (menuImageFile) {
+        imageUrl = await uploadMenuImage(menuImageFile) || ""
+      }
+
       const { data, error } = await supabase
         .from("services")
         .insert([
@@ -642,7 +695,8 @@ export function CashierManagement() {
             type: menuForm.type,
             duration: menuForm.type === "service" ? menuForm.duration : 0,
             stock: menuForm.type === "product" ? menuForm.stock : null,
-            status: "active",
+            aktif: true,
+            image_url: imageUrl,
           },
         ])
         .select()
@@ -651,7 +705,7 @@ export function CashierManagement() {
         console.error("[v0] Error creating menu item:", error)
         toast({
           title: "Error",
-          description: "Gagal membuat menu",
+          description: `Gagal membuat menu: ${error.message || ''}`,
           variant: "destructive",
         })
         return
@@ -663,7 +717,9 @@ export function CashierManagement() {
       })
 
       setIsAddMenuItemDialogOpen(false)
-      setMenuForm({ name: "", description: "", price: 0, category_id: "", duration: 0, type: "service", stock: 0 })
+      setMenuForm({ name: "", description: "", price: 0, category_id: "", duration: 0, type: "service", stock: 0, image_url: "" })
+      setMenuImageFile(null)
+      setMenuImagePreview(null)
       fetchMenuItems()
     } catch (error) {
       console.error("[v0] Error:", error)
@@ -692,6 +748,11 @@ export function CashierManagement() {
         }
       }
       
+      let imageUrl = menuForm.image_url
+      if (menuImageFile) {
+        imageUrl = await uploadMenuImage(menuImageFile) || menuForm.image_url
+      }
+
       const { error } = await supabase
         .from("services")
         .update({
@@ -702,6 +763,7 @@ export function CashierManagement() {
           type: menuForm.type,
           duration: menuForm.type === "service" ? menuForm.duration : 0,
           stock: menuForm.type === "product" ? menuForm.stock : null,
+          image_url: imageUrl,
         })
         .eq("id", editingMenuItem.id)
 
@@ -722,7 +784,9 @@ export function CashierManagement() {
 
       setIsAddMenuItemDialogOpen(false)
       setEditingMenuItem(null)
-      setMenuForm({ name: "", description: "", price: 0, category_id: "", duration: 0, type: "service", stock: 0 })
+      setMenuForm({ name: "", description: "", price: 0, category_id: "", duration: 0, type: "service", stock: 0, image_url: "" })
+      setMenuImageFile(null)
+      setMenuImagePreview(null)
       fetchMenuItems()
     } catch (error) {
       console.error("[v0] Error:", error)
@@ -761,14 +825,14 @@ export function CashierManagement() {
         // Deactivate the item instead of deleting
         const { error: updateError } = await supabase
           .from("services")
-          .update({ status: "inactive" })
+          .update({ aktif: false })
           .eq("id", itemId)
 
         if (updateError) {
           console.error("[v0] Error deactivating menu item:", updateError)
           toast({
             title: "Error",
-            description: "Gagal menonaktifkan menu",
+            description: `Gagal menonaktifkan menu: ${updateError.message || ''}`,
             variant: "destructive",
           })
           return
@@ -1150,7 +1214,10 @@ export function CashierManagement() {
       duration: 0,
       stock: 0,
       type: filterType as "service" | "product",
+      image_url: "",
     })
+    setMenuImageFile(null)
+    setMenuImagePreview(null)
     setEditingMenuItem(null)
     setIsAddMenuItemDialogOpen(true)
   }
@@ -1164,7 +1231,10 @@ export function CashierManagement() {
       duration: item.duration || 0,
       stock: item.stock || 0,
       type: item.type,
+      image_url: item.image_url || "",
     })
+    setMenuImageFile(null)
+    setMenuImagePreview(item.image_url || null)
     setEditingMenuItem(item)
     setIsAddMenuItemDialogOpen(true)
   }
@@ -1183,7 +1253,10 @@ export function CashierManagement() {
       duration: 0,
       stock: 0,
       type: filterType as "service" | "product",
+      image_url: "",
     })
+    setMenuImageFile(null)
+    setMenuImagePreview(null)
     setEditingMenuItem(null)
   }
 
@@ -1191,7 +1264,7 @@ export function CashierManagement() {
     try {
       const newStatus = currentStatus === "active" ? "inactive" : "active"
 
-      const { error } = await supabase.from("services").update({ status: newStatus }).eq("id", menuId)
+      const { error } = await supabase.from("services").update({ aktif: newStatus === "active" }).eq("id", menuId)
 
       if (error) throw error
 
@@ -1287,13 +1360,13 @@ export function CashierManagement() {
 
   const updateMenuStatus = async (itemId: string, newStatus: string) => {
     try {
-      const { error } = await supabase.from("services").update({ status: newStatus }).eq("id", itemId)
+      const { error } = await supabase.from("services").update({ aktif: newStatus === "active" }).eq("id", itemId)
 
       if (error) {
         console.error("[v0] Error updating menu status:", error)
         toast({
           title: "Error",
-          description: "Gagal mengupdate status menu",
+          description: `Gagal mengupdate status menu: ${error.message || ''}`,
           variant: "destructive",
         })
         return
@@ -1509,15 +1582,12 @@ export function CashierManagement() {
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto"></div>
                   <p className="mt-2 text-gray-600">Memuat kategori...</p>
                 </div>
-              ) : categories.filter(c => {
-                // Filter categories based on type (you'll need to add type field to categories)
-                return true; // For now show all, but you should filter by type
-              }).length === 0 ? (
+              ) : categories.filter(c => c.type === filterType || (!c.type && filterType === "service")).length === 0 ? (
                 <div className="col-span-full text-center py-8">
                   <p className="text-gray-600">Belum ada kategori. Tambahkan kategori pertama Anda!</p>
                 </div>
               ) : (
-                categories.filter(c => true).map((category) => (
+                categories.filter(c => c.type === filterType || (!c.type && filterType === "service")).map((category) => (
                   <Card key={category.id} className="hover:shadow-md transition-shadow">
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between mb-3">
@@ -1631,12 +1701,22 @@ export function CashierManagement() {
                 filteredMenuItems.map((item) => (
                   <Card key={item.id} className="hover:shadow-lg transition-shadow overflow-hidden">
                     <CardContent className="p-0">
-                      {/* Image Placeholder */}
-                      <div className="w-full h-40 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                        <div className="text-6xl">
-                          {item.type === "service" ? "💈" : "📦"}
+                      {/* Image Placeholder / Actual Image */}
+                      {item.image_url ? (
+                        <div className="w-full h-40 relative">
+                          <img 
+                            src={item.image_url} 
+                            alt={item.name} 
+                            className="w-full h-full object-cover"
+                          />
                         </div>
-                      </div>
+                      ) : (
+                        <div className="w-full h-40 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                          <div className="text-6xl">
+                            {item.type === "service" ? "💈" : "📦"}
+                          </div>
+                        </div>
+                      )}
                       
                       {/* Item Info */}
                       <div className="p-4 space-y-3">
@@ -2038,8 +2118,8 @@ export function CashierManagement() {
             <DialogTitle>{editingCategory ? "Edit Kategori" : "Tambah Kategori Baru"}</DialogTitle>
             <DialogDescription>
               {editingCategory
-                ? "Update informasi kategori"
-                : "Buat kategori baru untuk mengelompokkan layanan dan produk"}
+                ? `Update informasi kategori untuk ${categoryForm.type === 'service' ? 'Layanan' : 'Produk'}`
+                : `Buat kategori baru untuk ${categoryForm.type === 'service' ? 'Layanan' : 'Produk'}`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -2052,12 +2132,21 @@ export function CashierManagement() {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Deskripsi</label>
-              <Textarea
-                value={categoryForm.description}
-                onChange={(e) => setCategoryForm((prev) => ({ ...prev, description: e.target.value }))}
-                placeholder="Deskripsi kategori..."
-              />
+              <label className="text-sm font-medium">Tipe Kategori</label>
+              <Select
+                value={categoryForm.type}
+                onValueChange={(value: "service" | "product") =>
+                  setCategoryForm((prev) => ({ ...prev, type: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih tipe kategori" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="service">Layanan</SelectItem>
+                  <SelectItem value="product">Produk</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="text-sm font-medium">Urutan</label>
@@ -2107,37 +2196,115 @@ export function CashierManagement() {
                 placeholder="Deskripsi menu..."
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium">Foto Menu (Opsional)</label>
+              <div className="mt-1 flex items-center gap-4">
+                {menuImagePreview ? (
+                  <div className="relative w-20 h-20 rounded-lg border-2 border-red-100 overflow-hidden flex-shrink-0">
+                    <img 
+                      src={menuImagePreview} 
+                      alt="Preview" 
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuImageFile(null)
+                        setMenuImagePreview(null)
+                        setMenuForm(prev => ({ ...prev, image_url: "" }))
+                      }}
+                      className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-0.5 hover:bg-red-700 transition-colors"
+                      title="Hapus foto"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-20 h-20 rounded-lg bg-gray-100 border border-dashed border-gray-300 flex items-center justify-center flex-shrink-0 text-3xl text-gray-400">
+                    📷
+                  </div>
+                )}
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      setMenuImageFile(file)
+                      setMenuImagePreview(URL.createObjectURL(file))
+                    }
+                  }}
+                  className="cursor-pointer"
+                />
+              </div>
+            </div>
+
+            <div className={menuForm.type === "service" ? "grid grid-cols-2 gap-4" : "grid grid-cols-1"}>
               <div>
                 <label className="text-sm font-medium">Harga</label>
                 <Input
-                  type="number"
-                  value={menuForm.price}
-                  onChange={(e) => setMenuForm((prev) => ({ ...prev, price: Number.parseInt(e.target.value) || 0 }))}
-                  placeholder="25000"
+                  type="text"
+                  value={formatNominal(menuForm.price)}
+                  onChange={(e) => setMenuForm((prev) => ({ ...prev, price: parseNominal(e.target.value) }))}
+                  placeholder="Rp 25.000"
                 />
               </div>
-              {menuForm.type === "service" ? (
-                <div>
-                  <label className="text-sm font-medium">Durasi (menit)</label>
-                  <Input
-                    type="number"
-                    value={menuForm.duration}
-                    onChange={(e) =>
-                      setMenuForm((prev) => ({ ...prev, duration: Number.parseInt(e.target.value) || 0 }))
-                    }
-                    placeholder="30"
-                  />
-                </div>
-              ) : (
-                <div>
-                  <label className="text-sm font-medium">Stok</label>
-                  <Input
-                    type="number"
-                    value={menuForm.stock}
-                    onChange={(e) => setMenuForm((prev) => ({ ...prev, stock: Number.parseInt(e.target.value) || 0 }))}
-                    placeholder="100"
-                  />
+              {menuForm.type === "service" && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Durasi</label>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-10 w-10 flex-shrink-0 border-gray-200"
+                      onClick={() => setMenuForm((prev) => ({ ...prev, duration: Math.max(0, prev.duration - 5) }))}
+                    >
+                      -
+                    </Button>
+                    <div className="relative flex-1">
+                      <Input
+                        type="text"
+                        value={menuForm.duration === 0 ? "" : menuForm.duration}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^0-9]/g, '');
+                          setMenuForm((prev) => ({ ...prev, duration: val === "" ? 0 : parseInt(val, 10) }));
+                        }}
+                        className="text-center font-bold pr-10 h-10"
+                        placeholder="0"
+                      />
+                      <span className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-[10px] text-gray-400 font-medium">
+                        menit
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-10 w-10 flex-shrink-0 border-gray-200"
+                      onClick={() => setMenuForm((prev) => ({ ...prev, duration: prev.duration + 5 }))}
+                    >
+                      +
+                    </Button>
+                  </div>
+                  
+                  {/* Quick Select Buttons */}
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {[15, 30, 45, 60, 90, 120].map((mins) => (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => setMenuForm((prev) => ({ ...prev, duration: mins }))}
+                        className={`px-1.5 py-0.5 text-[10px] rounded border transition-all ${
+                          menuForm.duration === mins
+                            ? "bg-red-600 border-red-600 text-white font-semibold shadow-sm"
+                            : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300"
+                        }`}
+                      >
+                        {mins}m
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -2145,7 +2312,7 @@ export function CashierManagement() {
               <label className="text-sm font-medium">Kategori</label>
               <Select
                 value={menuForm.category_id}
-                onChange={(value) => setMenuForm((prev) => ({ ...prev, category_id: value }))}
+                onValueChange={(value) => setMenuForm((prev) => ({ ...prev, category_id: value }))}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Pilih kategori" />
@@ -2165,7 +2332,7 @@ export function CashierManagement() {
               <label className="text-sm font-medium">Tipe</label>
               <Select
                 value={menuForm.type}
-                onChange={(value: "service" | "product") => setMenuForm((prev) => ({ ...prev, type: value, category_id: "" }))}
+                onValueChange={(value: "service" | "product") => setMenuForm((prev) => ({ ...prev, type: value, category_id: "" }))}
                 disabled={!!editingMenuItem}
               >
                 <SelectTrigger>

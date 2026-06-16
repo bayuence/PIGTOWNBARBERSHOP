@@ -80,7 +80,13 @@ interface BonusPenaltyData {
   };
 }
 
-export function KontrolGaji() {
+export function KontrolGaji({ 
+  employees: propEmployees,
+  employeeStats: propEmployeeStats
+}: { 
+  employees?: Employee[]; 
+  employeeStats?: any;
+} = {}) {
   const { toast } = useToast();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -514,8 +520,12 @@ export function KontrolGaji() {
   }, [services, selectedEmployee]);
 
   const filteredEmployees = useMemo(() => {
+    if (propEmployees && propEmployees.length > 0) {
+      const allowedIds = new Set(propEmployees.map(e => String(e.id)));
+      return employees.filter(e => allowedIds.has(String(e.id)));
+    }
     return employees; // Tetap tampilkan semua karyawan, filter cabang dihapus
-  }, [employees]);
+  }, [employees, propEmployees]);
 
   if (pageLoading) {
     return (
@@ -529,9 +539,9 @@ export function KontrolGaji() {
   }
 
   return (
-    <div className="w-full -mx-6">
-      <Card className="border-0 border-t border-b border-gray-200 rounded-none shadow-sm">
-        <CardHeader className="bg-gradient-to-r from-red-600 to-orange-600 text-white p-4">
+    <div className="w-full">
+      <Card className="shadow-lg border-0 rounded-xl overflow-hidden">
+        <CardHeader className="bg-gradient-to-r from-red-600 to-orange-600 text-white p-6 pr-12">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <CreditCard className="h-6 w-6" />
@@ -548,7 +558,7 @@ export function KontrolGaji() {
                   <>
                     <Wifi className="h-4 w-4 text-green-300" />
                     <Badge variant="secondary" className="bg-green-100 text-green-800">
-                      Online ({employees.length} karyawan)
+                      Online ({filteredEmployees.length} karyawan)
                     </Badge>
                   </>
                 ) : connectionStatus === 'reconnecting' ? (
@@ -600,7 +610,7 @@ export function KontrolGaji() {
                 <TrendingUp className="h-5 w-5 sm:h-6 sm:w-6 mx-auto mb-2 text-yellow-600" />
                 <p className="text-xs sm:text-sm font-medium text-gray-600">Total Komisi Didapat</p>
                 <p className="text-sm sm:text-xl lg:text-2xl font-bold text-yellow-600">
-                  Rp {Object.values(earnedCommissions).reduce((sum, commission) => sum + commission, 0).toLocaleString('id-ID')}
+                  Rp {filteredEmployees.reduce((sum, emp) => sum + (earnedCommissions[emp.id] || 0), 0).toLocaleString('id-ID')}
                 </p>
               </div>
               <div className="text-center p-3 sm:p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">

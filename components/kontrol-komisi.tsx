@@ -526,14 +526,14 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
     const completedTransactions = transactions.filter(t => t.commission_value);
 
     const getProgressColor = (configured: number, total: number) => {
-        const percentage = (configured / total) * 100;
+        const percentage = total > 0 ? (configured / total) * 100 : 100;
         if (percentage === 100) return 'text-green-600';
         if (percentage >= 50) return 'text-yellow-600';
         return 'text-red-600';
     };
 
     const getProgressBg = (configured: number, total: number) => {
-        const percentage = (configured / total) * 100;
+        const percentage = total > 0 ? (configured / total) * 100 : 100;
         if (percentage === 100) return 'bg-green-600';
         if (percentage >= 50) return 'bg-yellow-600';
         return 'bg-red-600';
@@ -541,8 +541,8 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
 
     if (loading && employeeStatuses.length === 0) {
         return (
-            <div className="w-full -mx-6">
-                <Card className="border-0 border-t border-b border-gray-200 rounded-none">
+            <div className="w-full">
+                <Card className="border-0 shadow-lg rounded-xl overflow-hidden">
                     <CardContent className="p-12 text-center">
                         <Loader2 className="h-12 w-12 animate-spin mx-auto text-red-600 mb-4" />
                         <p className="text-gray-600">Memuat data komisi...</p>
@@ -553,9 +553,9 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
     }
 
     return (
-        <div className="w-full -mx-6">
-            <Card className="border-0 border-t border-b border-gray-200 rounded-none shadow-sm">
-                <CardHeader className="bg-gradient-to-r from-red-600 to-orange-600 text-white p-4">
+        <div className="w-full">
+            <Card className="border-0 shadow-lg rounded-xl overflow-hidden">
+                <CardHeader className="bg-gradient-to-r from-red-600 to-orange-600 text-white p-6 pr-12">
                     <div className="flex items-center justify-between">
                         <div>
                             <CardTitle className="flex items-center gap-3 text-xl font-bold mb-2">
@@ -735,13 +735,13 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
 
                                             <div className="text-right">
                                                 <div className={`text-3xl font-bold mb-1 ${getProgressColor(status.configuredServices, status.totalServices)}`}>
-                                                    {Math.round((status.configuredServices / status.totalServices) * 100)}%
+                                                    {status.totalServices > 0 ? Math.round((status.configuredServices / status.totalServices) * 100) : 100}%
                                                 </div>
                                                 <p className="text-xs text-gray-600">Komisi Teratur</p>
                                                 <div className="w-32 h-2 bg-gray-200 rounded-full mt-2 overflow-hidden">
                                                     <div 
                                                         className={`h-full ${getProgressBg(status.configuredServices, status.totalServices)} transition-all`}
-                                                        style={{ width: `${(status.configuredServices / status.totalServices) * 100}%` }}
+                                                        style={{ width: `${status.totalServices > 0 ? (status.configuredServices / status.totalServices) * 100 : 100}%` }}
                                                     />
                                                 </div>
                                             </div>
@@ -873,7 +873,7 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                                             </div>
                                             <div>
                                                 <p className="text-2xl font-bold text-red-600">
-                                                    {employeeStatuses.filter(s => s.configuredServices === 0).length}
+                                                    {employeeStatuses.filter(s => s.totalServices > 0 && s.configuredServices === 0).length}
                                                 </p>
                                                 <p className="text-sm text-gray-600">Belum Diatur</p>
                                             </div>
@@ -884,7 +884,7 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
 
                             <div className="space-y-2">
                                 {employeeStatuses.map((status) => {
-                                    const percentage = Math.round((status.configuredServices / status.totalServices) * 100);
+                                    const percentage = status.totalServices > 0 ? Math.round((status.configuredServices / status.totalServices) * 100) : 100;
                                     let statusColor = 'red';
                                     let statusText = 'Belum Diatur';
                                     
@@ -983,7 +983,7 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                                                 <div className="flex items-center justify-between mb-2">
                                                     <p className="font-semibold text-gray-800">{status.employee.name}</p>
                                                     <Badge variant={status.configuredServices === status.totalServices ? "default" : "destructive"}>
-                                                        {Math.round((status.configuredServices / status.totalServices) * 100)}%
+                                                        {status.totalServices > 0 ? Math.round((status.configuredServices / status.totalServices) * 100) : 100}%
                                                     </Badge>
                                                 </div>
                                                 <div className="grid grid-cols-3 gap-4 text-sm">

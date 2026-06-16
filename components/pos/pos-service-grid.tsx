@@ -284,9 +284,19 @@ export function POSServiceGrid({
             >
               <CardHeader className="p-3 md:p-4 pb-2">
                 <div className="flex items-start gap-2">
-                  <div className="w-8 h-8 md:w-10 md:h-10 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <IconComponent className="h-4 w-4 md:h-5 md:w-5 text-primary" />
-                  </div>
+                  {service.image_url ? (
+                    <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg overflow-hidden flex-shrink-0">
+                      <img 
+                        src={service.image_url} 
+                        alt={service.name} 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-8 h-8 md:w-10 md:h-10 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <IconComponent className="h-4 w-4 md:h-5 md:w-5 text-primary" />
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <CardTitle className="text-xs md:text-base font-semibold truncate">
                       {service.name}

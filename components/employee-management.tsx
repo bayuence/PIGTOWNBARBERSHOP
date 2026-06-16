@@ -7,7 +7,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
     Dialog,
     DialogContent,
@@ -37,6 +44,9 @@ import {
     CheckCircle,
     XCircle,
     Calendar,
+    MoreVertical,
+    DollarSign,
+    Clock,
 } from "lucide-react"
 import {
     supabase,
@@ -106,6 +116,11 @@ function EmployeeManagement() {
     const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null)
     const [searchTerm, setSearchTerm] = useState("")
     const [filterStatus, setFilterStatus] = useState("all")
+
+    // State for specific employee modals
+    const [selectedEmployeeForKomisi, setSelectedEmployeeForKomisi] = useState<Employee | null>(null)
+    const [selectedEmployeeForPresensi, setSelectedEmployeeForPresensi] = useState<Employee | null>(null)
+    const [selectedEmployeeForGaji, setSelectedEmployeeForGaji] = useState<Employee | null>(null)
 
     // State untuk manajemen hari libur
     const [selectedEmployeeForAbsence, setSelectedEmployeeForAbsence] = useState<Employee | null>(null)
@@ -755,159 +770,177 @@ function EmployeeManagement() {
                 </Select>
             </div>
 
-            {/* Employee Tabs - RESPONSIVE */}
-            <Tabs defaultValue="grid" className="space-y-4 md:space-y-6">
-                <TabsList className="w-full grid grid-cols-2 sm:grid-cols-4 h-auto gap-1">
-                    <TabsTrigger value="grid" className="text-xs md:text-sm py-2">Grid View</TabsTrigger>
-                    <TabsTrigger value="transactions" className="text-xs md:text-sm py-2">Komisi & Point</TabsTrigger>
-                    <TabsTrigger value="attendance" className="text-xs md:text-sm py-2">Presensi</TabsTrigger>
-                    <TabsTrigger value="payroll" className="text-xs md:text-sm py-2">Penggajian</TabsTrigger>
-                </TabsList>
+            {/* Employee Grid - RESPONSIVE */}
+            <div className="space-y-4 md:space-y-6">
+                {loading ? (
+                    <div className="text-center py-12">
+                        <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+                        <p>Memuat data karyawan...</p>
+                    </div>
+                ) : filteredEmployees.length === 0 ? (
+                    <div className="text-center py-12">
+                        <p className="text-muted-foreground">Tidak ada karyawan ditemukan</p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 lg:gap-6">
+                        {filteredEmployees.map((employee) => {
+                            const stats = employeeStats[employee.id] || { totalTransactions: 0, totalCommission: 0 }
+                            const attendance = employeeAttendance[employee.id] || { attendanceRate: 100 }
 
-                <TabsContent value="grid" className="space-y-4 md:space-y-6">
-                    {loading ? (
-                        <div className="text-center py-12">
-                            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-                            <p>Memuat data karyawan...</p>
-                        </div>
-                    ) : filteredEmployees.length === 0 ? (
-                        <div className="text-center py-12">
-                            <p className="text-muted-foreground">Tidak ada karyawan ditemukan</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 lg:gap-6">
-                            {filteredEmployees.map((employee) => {
-                                const stats = employeeStats[employee.id] || { totalTransactions: 0, totalCommission: 0 }
-                                const attendance = employeeAttendance[employee.id] || { attendanceRate: 100 }
-
-                                return (
-                                    <Card key={employee.id} className="hover:shadow-lg transition-shadow">
-                                        <CardHeader className="p-3 md:p-4 lg:p-6">
-                                            <div className="flex items-start justify-between gap-2">
-                                                <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
-                                                    <Avatar className="h-10 w-10 md:h-12 md:w-12 flex-shrink-0">
-                                                        <AvatarImage src={employee.avatar_url || "/images/pigtown-logo.png"} />
-                                                        <AvatarFallback className="bg-primary/10 text-primary text-xs md:text-sm">
-                                                            {employee.name
-                                                                .split(" ")
-                                                                .map((n) => n[0])
-                                                                .join("")
-                                                                .toUpperCase()}
-                                                        </AvatarFallback>
-                                                    </Avatar>
-                                                    <div className="flex-1 min-w-0">
-                                                        <CardTitle className="text-sm md:text-base lg:text-lg truncate">{employee.name}</CardTitle>
-                                                        <CardDescription className="text-xs md:text-sm truncate">
-                                                            {employee.position || "Karyawan"}
-                                                        </CardDescription>
-                                                    </div>
-                                                </div>
-                                                <Badge className={`${getStatusColor(employee.status)} text-[10px] md:text-xs flex-shrink-0`}>{getStatusText(employee.status)}</Badge>
-                                            </div>
-                                        </CardHeader>
-                                        <CardContent className="space-y-3 md:space-y-4 p-3 md:p-4 lg:p-6 pt-0">
-                                            <div className="space-y-1.5 md:space-y-2 text-xs md:text-sm">
-                                                <div className="flex items-center gap-2">
-                                                    <Mail className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                                                    <span className="truncate">{employee.email || "N/A"}</span>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <Phone className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                                                    <span className="truncate">{employee.phone || "N/A"}</span>
+                            return (
+                                <Card key={employee.id} className="hover:shadow-lg transition-shadow">
+                                    <CardHeader className="p-3 md:p-4 lg:p-6 pb-0">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
+                                                <Avatar className="h-10 w-10 md:h-12 md:w-12 flex-shrink-0">
+                                                    <AvatarImage src={employee.avatar_url || "/images/pigtown-logo.png"} />
+                                                    <AvatarFallback className="bg-primary/10 text-primary text-xs md:text-sm">
+                                                        {employee.name
+                                                            .split(" ")
+                                                            .map((n) => n[0])
+                                                            .join("")
+                                                            .toUpperCase()}
+                                                    </AvatarFallback>
+                                                </Avatar>
+                                                <div className="flex-1 min-w-0">
+                                                    <CardTitle className="text-sm md:text-base lg:text-lg truncate">{employee.name}</CardTitle>
+                                                    <CardDescription className="text-xs md:text-sm truncate">
+                                                        {employee.position || "Karyawan"}
+                                                    </CardDescription>
                                                 </div>
                                             </div>
-
-                                            <div className="grid grid-cols-2 gap-2 md:gap-3 lg:gap-4 text-xs md:text-sm">
-                                                <div>
-                                                    <p className="text-muted-foreground text-[10px] md:text-xs">Transaksi</p>
-                                                    <p className="font-medium">{stats.totalTransactions}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-muted-foreground text-[10px] md:text-xs">Komisi & Point</p>
-                                                    <p className="font-medium text-xs md:text-sm truncate">{formatRupiah(stats.totalCommission || 0)}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-muted-foreground text-[10px] md:text-xs">Presensi</p>
-                                                    <p className="font-medium">{attendance.attendanceRate || 0}%</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-muted-foreground text-[10px] md:text-xs">Gaji Pokok</p>
-                                                    <p className="font-medium text-xs md:text-sm truncate">{formatRupiah(employee.salary || 0)}</p>
-                                                </div>
+                                            <div className="flex items-center gap-2 flex-shrink-0">
+                                                <Badge className={`${getStatusColor(employee.status)} text-[10px] md:text-xs`}>{getStatusText(employee.status)}</Badge>
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                                            <MoreVertical className="h-4 w-4" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuLabel>Aksi Tambahan</DropdownMenuLabel>
+                                                        <DropdownMenuItem onClick={() => handleViewDetail(employee)}>
+                                                            <Eye className="h-4 w-4 mr-2" /> Detail
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => handleEditEmployee(employee)}>
+                                                            <Edit className="h-4 w-4 mr-2" /> Edit
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => handleOpenAbsenceDialog(employee)}>
+                                                            <Calendar className="h-4 w-4 mr-2" /> Atur Libur
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuSeparator />
+                                                        <DropdownMenuItem onClick={() => handleDeleteConfirmation(employee)} className="text-red-600">
+                                                            <Trash2 className="h-4 w-4 mr-2" /> Hapus
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
                                             </div>
-
-                                            {/* 🔥 INFO HARI LIBUR - RESPONSIVE */}
-                                            <div className="p-2 md:p-3 bg-blue-50 rounded-lg border border-blue-200">
-                                                <div className="flex items-center justify-between mb-1 md:mb-2">
-                                                    <span className="text-xs md:text-sm font-medium text-blue-800">Hari Libur</span>
-                                                    <Badge variant={employee.current_absent_days && employee.current_absent_days > (employee.max_absent_days || 4) ? "destructive" : "outline"} className="text-[10px] md:text-xs">
-                                                        {employee.current_absent_days || 0}/{employee.max_absent_days || 4}
-                                                    </Badge>
-                                                </div>
-                                                <div className="text-[10px] md:text-xs text-blue-600">
-                                                    {employee.current_absent_days && employee.current_absent_days > (employee.max_absent_days || 4) 
-                                                        ? "⚠️ Melebihi batas" 
-                                                        : "✅ Masih dalam batas"}
-                                                </div>
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent className="space-y-3 md:space-y-4 p-3 md:p-4 lg:p-6 pt-4">
+                                        <div className="space-y-1.5 md:space-y-2 text-xs md:text-sm">
+                                            <div className="flex items-center gap-2">
+                                                <Mail className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                                <span className="truncate">{employee.email || "N/A"}</span>
                                             </div>
-
-                                            <div className="flex items-center gap-2 pt-2 border-t">
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="flex-1 gap-1 bg-transparent text-xs md:text-sm h-8 md:h-9"
-                                                    onClick={() => handleViewDetail(employee)}
-                                                >
-                                                    <Eye className="h-3 w-3" />
-                                                    <span className="hidden sm:inline">Detail</span>
-                                                </Button>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="flex-1 gap-1 bg-transparent text-xs md:text-sm h-8 md:h-9"
-                                                    onClick={() => handleEditEmployee(employee)}
-                                                >
-                                                    <Edit className="h-3 w-3" />
-                                                    <span className="hidden sm:inline">Edit</span>
-                                                </Button>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="flex-1 gap-1 text-blue-600 hover:text-blue-700 bg-transparent text-xs md:text-sm h-8 md:h-9"
-                                                    onClick={() => handleOpenAbsenceDialog(employee)}
-                                                >
-                                                    <Calendar className="h-3 w-3" />
-                                                    <span className="hidden sm:inline">Libur</span>
-                                                </Button>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="gap-1 text-red-600 hover:text-red-700 bg-transparent text-xs md:text-sm h-8 md:h-9 px-2"
-                                                    onClick={() => handleDeleteConfirmation(employee)}
-                                                >
-                                                    <Trash2 className="h-3 w-3" />
-                                                </Button>
+                                            <div className="flex items-center gap-2">
+                                                <Phone className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                                <span className="truncate">{employee.phone || "N/A"}</span>
                                             </div>
-                                        </CardContent>
-                                    </Card>
-                                )
-                            })}
-                        </div>
-                    )}
-                </TabsContent>
+                                        </div>
 
-                <TabsContent value="transactions" className="mt-6">
-                    <KontrolKomisi employees={filteredEmployees} />
-                </TabsContent>
+                                        <div className="grid grid-cols-2 gap-2 md:gap-3 lg:gap-4 text-xs md:text-sm">
+                                            <div>
+                                                <p className="text-muted-foreground text-[10px] md:text-xs">Transaksi</p>
+                                                <p className="font-medium">{stats.totalTransactions}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-muted-foreground text-[10px] md:text-xs">Komisi & Point</p>
+                                                <p className="font-medium text-xs md:text-sm truncate">{formatRupiah(stats.totalCommission || 0)}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-muted-foreground text-[10px] md:text-xs">Presensi</p>
+                                                <p className="font-medium">{attendance.attendanceRate || 0}%</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-muted-foreground text-[10px] md:text-xs">Gaji Pokok</p>
+                                                <p className="font-medium text-xs md:text-sm truncate">{formatRupiah(employee.salary || 0)}</p>
+                                            </div>
+                                        </div>
 
-                <TabsContent value="attendance" className="mt-6">
-                    <KontrolPresensi employees={filteredEmployees} employeeAttendance={employeeAttendance} />
-                </TabsContent>
+                                        {/* 🔥 INFO HARI LIBUR - RESPONSIVE */}
+                                        <div className="p-2 md:p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                            <div className="flex items-center justify-between mb-1 md:mb-2">
+                                                <span className="text-xs md:text-sm font-medium text-blue-800">Hari Libur</span>
+                                                <Badge variant={employee.current_absent_days && employee.current_absent_days > (employee.max_absent_days || 4) ? "destructive" : "outline"} className="text-[10px] md:text-xs">
+                                                    {employee.current_absent_days || 0}/{employee.max_absent_days || 4}
+                                                </Badge>
+                                            </div>
+                                            <div className="text-[10px] md:text-xs text-blue-600">
+                                                {employee.current_absent_days && employee.current_absent_days > (employee.max_absent_days || 4) 
+                                                    ? "⚠️ Melebihi batas" 
+                                                    : "✅ Masih dalam batas"}
+                                            </div>
+                                        </div>
 
-                <TabsContent value="payroll" className="mt-6">
-                    <KontrolGaji employees={filteredEmployees} employeeStats={employeeStats} />
-                </TabsContent>
-            </Tabs>
+                                        <div className="grid grid-cols-3 gap-2 pt-2 border-t">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="flex flex-col gap-1 bg-transparent text-[10px] md:text-xs h-auto py-2"
+                                                onClick={() => setSelectedEmployeeForKomisi(employee)}
+                                            >
+                                                <DollarSign className="h-4 w-4" />
+                                                <span>Komisi</span>
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="flex flex-col gap-1 bg-transparent text-[10px] md:text-xs h-auto py-2"
+                                                onClick={() => setSelectedEmployeeForPresensi(employee)}
+                                            >
+                                                <Clock className="h-4 w-4" />
+                                                <span>Presensi</span>
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="flex flex-col gap-1 bg-transparent text-[10px] md:text-xs h-auto py-2"
+                                                onClick={() => setSelectedEmployeeForGaji(employee)}
+                                            >
+                                                <FileText className="h-4 w-4" />
+                                                <span>Gaji</span>
+                                            </Button>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )
+                        })}
+                    </div>
+                )}
+            </div>
+
+            {/* Modals for Specific Employee Actions */}
+            <Dialog open={!!selectedEmployeeForKomisi} onOpenChange={(open) => !open && setSelectedEmployeeForKomisi(null)}>
+                <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto w-11/12 p-0 border-none bg-transparent shadow-none">
+                    <DialogTitle className="sr-only">Komisi Karyawan</DialogTitle>
+                    {selectedEmployeeForKomisi && <KontrolKomisi employees={[selectedEmployeeForKomisi]} />}
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!selectedEmployeeForPresensi} onOpenChange={(open) => !open && setSelectedEmployeeForPresensi(null)}>
+                <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto w-11/12 p-0 border-none bg-transparent shadow-none">
+                    <DialogTitle className="sr-only">Presensi Karyawan</DialogTitle>
+                    {selectedEmployeeForPresensi && <KontrolPresensi employees={[selectedEmployeeForPresensi]} employeeAttendance={{[selectedEmployeeForPresensi.id]: employeeAttendance[selectedEmployeeForPresensi.id]}} />}
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!selectedEmployeeForGaji} onOpenChange={(open) => !open && setSelectedEmployeeForGaji(null)}>
+                <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto w-11/12 p-0 border-none bg-transparent shadow-none">
+                    <DialogTitle className="sr-only">Penggajian Karyawan</DialogTitle>
+                    {selectedEmployeeForGaji && <KontrolGaji employees={[selectedEmployeeForGaji]} employeeStats={{[selectedEmployeeForGaji.id]: employeeStats[selectedEmployeeForGaji.id]}} />}
+                </DialogContent>
+            </Dialog>
 
             {/* 🔥 DIALOG BARU: MANAJEMEN HARI LIBUR */}
             <Dialog open={isAbsenceDialogOpen} onOpenChange={setIsAbsenceDialogOpen}>

@@ -76,7 +76,7 @@ const parseNominal = (value: string): number => {
 export function POSSystem() {
   const [selectedCategory, setSelectedCategory] = useState("semua")
   const [selectedType, setSelectedType] = useState<"all" | "service" | "product">("all")
-  const [cart, setCart] = useState < CartItem[] > ([])
+  const [cart, setCart] = useState<CartItem[]>([])
   const [customerName, setCustomerName] = useState("")
   const [selectedBranch, setSelectedBranch] = useState("")
   const [servingEmployee, setServingEmployee] = useState("")
@@ -87,24 +87,24 @@ export function POSSystem() {
   const [isReceiptOpen, setIsReceiptOpen] = useState(false)
   const [isCartOpen, setIsCartOpen] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [currentTransaction, setCurrentTransaction] = useState < any | null > (null)
-  const [discountType, setDiscountType] = useState < "percentage" | "fixed" > ("percentage")
+  const [currentTransaction, setCurrentTransaction] = useState<any | null>(null)
+  const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage")
   const [discountValue, setDiscountValue] = useState("")
   const [discountReason, setDiscountReason] = useState("")
-  const [services, setServices] = useState < ServiceWithCategory[] > ([])
-  const [categories, setCategories] = useState < any[] > ([])
-  const [branches, setBranches] = useState < Branch[] > ([])
-  const [employees, setEmployees] = useState < any[] > ([])
-  const [currentUser, setCurrentUser] = useState < any | null > (null)
-  const [receiptTemplate, setReceiptTemplate] = useState < ReceiptTemplateWithBranch | null > (null)
-  const [branchInfo, setBranchInfo] = useState < any > (null)
+  const [services, setServices] = useState<ServiceWithCategory[]>([])
+  const [categories, setCategories] = useState<any[]>([])
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [employees, setEmployees] = useState<any[]>([])
+  const [currentUser, setCurrentUser] = useState<any | null>(null)
+  const [receiptTemplate, setReceiptTemplate] = useState<ReceiptTemplateWithBranch | null>(null)
+  const [branchInfo, setBranchInfo] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [isBluetoothOpen, setIsBluetoothOpen] = useState(false)
   const [bluetoothConnected, setBluetoothConnected] = useState(false)
-  const [bluetoothDevice, setBluetoothDevice] = useState < BluetoothDevice | null > (null)
-  const [bluetoothCharacteristic, setBluetoothCharacteristic] = useState < BluetoothRemoteGATTCharacteristic | null > (null)
-  const [bluetoothError, setBluetoothError] = useState < string | null > (null)
-  const [outletStock, setOutletStock] = useState < OutletStock[] > ([])
+  const [bluetoothDevice, setBluetoothDevice] = useState<BluetoothDevice | null>(null)
+  const [bluetoothCharacteristic, setBluetoothCharacteristic] = useState<BluetoothRemoteGATTCharacteristic | null>(null)
+  const [bluetoothError, setBluetoothError] = useState<string | null>(null)
+  const [outletStock, setOutletStock] = useState<OutletStock[]>([])
   const [stockLoading, setStockLoading] = useState(false)
 
   const categoryIcons = {
@@ -162,9 +162,9 @@ export function POSSystem() {
     if (templateError) console.error("Error loading receipt template:", templateError)
     else setReceiptTemplate(templateData)
 
-    const { data: branchData, error: branchError } = await supabase.from("branches").select("*").limit(1).single()
+    const { data: branchData, error: branchError } = await supabase.from("branches").select("*").limit(1).maybeSingle()
     if (branchError) console.error("Error loading branch data:", branchError)
-    else setBranchInfo(branchData)
+    else if (branchData) setBranchInfo(branchData)
   }, [])
 
   const loadEmployeesData = useCallback(async () => {
@@ -331,7 +331,7 @@ export function POSSystem() {
 
   // Handle print with debounce to prevent double printing
   const [isPrinting, setIsPrinting] = useState(false)
-  
+
   const handlePrint = useCallback(() => {
     if (isPrinting) return
     setIsPrinting(true)
@@ -355,15 +355,15 @@ export function POSSystem() {
           <div style="text-align:center; margin-bottom:2mm;">
             ${showLogo && receiptTemplate?.logo_url ? `<img src="${receiptTemplate.logo_url}" alt="Logo" style="height:${receiptTemplate?.logo_height || 40}px; width:auto; margin:0 auto 2mm; display:block;" />` : ''}
             ${receiptTemplate?.header_text
-              ? `<div style="white-space:pre-line; font-weight:700; font-size:${paperWidth===58?'9px':'11px'};">${receiptTemplate.header_text}</div>`
-              : `<div style="font-weight:700; font-size:${paperWidth===58?'10px':'12px'};">PIGTOWN BARBERSHOP</div>`}
-            ${showAddress && branchInfo?.address ? `<div style="font-size:${paperWidth===58?'7px':'9px'}; margin-top:1mm;">${branchInfo.address}</div>` : ''}
-            ${showPhone && branchInfo?.phone ? `<div style="font-size:${paperWidth===58?'7px':'9px'};">Telp: ${branchInfo.phone}</div>` : ''}
+            ? `<div style="white-space:pre-line; font-weight:700; font-size:${paperWidth === 58 ? '9px' : '11px'};">${receiptTemplate.header_text}</div>`
+            : `<div style="font-weight:700; font-size:${paperWidth === 58 ? '10px' : '12px'};">PIGTOWN BARBERSHOP</div>`}
+            ${showAddress && branchInfo?.address ? `<div style="font-size:${paperWidth === 58 ? '7px' : '9px'}; margin-top:1mm;">${branchInfo.address}</div>` : ''}
+            ${showPhone && branchInfo?.phone ? `<div style="font-size:${paperWidth === 58 ? '7px' : '9px'};">Telp: ${branchInfo.phone}</div>` : ''}
           </div>`
 
         const infoHTML = `
           <div style="border-top:1px dashed #000; margin:2mm 0"></div>
-          <div style="font-size:${paperWidth===58?'8px':'9px'};">
+          <div style="font-size:${paperWidth === 58 ? '8px' : '9px'};">
             ${showDate ? `<div>Tanggal: ${currentTransaction.timestamp}</div>` : ''}
             <div>No: ${currentTransaction.receipt_number}</div>
             ${showBarber ? `<div>Kasir: ${currentTransaction.employeeName}</div>` : ''}
@@ -371,11 +371,11 @@ export function POSSystem() {
           </div>
           <div style="border-top:1px dashed #000; margin:2mm 0"></div>`
 
-        const itemsHTML = currentTransaction.items.map((item:any) => {
+        const itemsHTML = currentTransaction.items.map((item: any) => {
           const left = `${item.quantity} x Rp ${formatRupiah(item.service.price.toString())}`
           const right = `Rp ${formatRupiah((item.service.price * item.quantity).toString())}`
           return `
-            <div style="font-size:${paperWidth===58?'8px':'9px'}; margin-bottom:1mm;">
+            <div style="font-size:${paperWidth === 58 ? '8px' : '9px'}; margin-bottom:1mm;">
               <div style="font-weight:600">${item.service.name}</div>
               <div style="display:flex; justify-content:space-between;">
                 <span>${left}</span>
@@ -386,13 +386,13 @@ export function POSSystem() {
 
         const totalsHTML = `
           <div style="border-top:1px dashed #000; margin:2mm 0"></div>
-          <div style="font-size:${paperWidth===58?'8px':'9px'};">
+          <div style="font-size:${paperWidth === 58 ? '8px' : '9px'};">
             <div style="display:flex; justify-content:space-between; margin-bottom:0.5mm;">
               <span>Subtotal:</span>
               <span>Rp ${formatRupiah(currentTransaction.subtotal)}</span>
             </div>
-            ${currentTransaction.discount_amount>0 ? `<div style="display:flex; justify-content:space-between; margin-bottom:0.5mm;"><span>Diskon:</span><span>-Rp ${formatRupiah(currentTransaction.discount_amount)}</span></div>` : ''}
-            <div style="display:flex; justify-content:space-between; font-weight:700; font-size:${paperWidth===58?'10px':'11px'}; margin-top:1mm; padding-top:1mm; border-top:1px solid #ddd;">
+            ${currentTransaction.discount_amount > 0 ? `<div style="display:flex; justify-content:space-between; margin-bottom:0.5mm;"><span>Diskon:</span><span>-Rp ${formatRupiah(currentTransaction.discount_amount)}</span></div>` : ''}
+            <div style="display:flex; justify-content:space-between; font-weight:700; font-size:${paperWidth === 58 ? '10px' : '11px'}; margin-top:1mm; padding-top:1mm; border-top:1px solid #ddd;">
               <span>TOTAL:</span>
               <span>Rp ${formatRupiah(currentTransaction.total_amount.toString())}</span>
             </div>
@@ -411,7 +411,7 @@ export function POSSystem() {
           <div style="border-top:1px dashed #000; margin:2mm 0"></div>`
 
         const footerHTML = `
-          <div style="text-align:center; font-size:${paperWidth===58?'8px':'9px'};">
+          <div style="text-align:center; font-size:${paperWidth === 58 ? '8px' : '9px'};">
             ${receiptTemplate?.footer_text ? `<div style="white-space:pre-line">${receiptTemplate.footer_text}</div>` : '<div>Terima kasih atas kunjungan Anda!</div>'}
           </div>`
 
@@ -422,7 +422,7 @@ export function POSSystem() {
         @page { size: ${paperWidth}mm auto; margin: 0; }
         html, body { width: ${paperWidth}mm; margin: 0; padding: 0; }
         body { background: #fff; color: #000; font-family: 'Courier New', monospace; font-size: ${fontSize}; line-height: 1.3; }
-        #root { width: ${paperWidth}mm; margin: 0; padding: ${paperWidth===58?'2mm':'3mm'}; }
+        #root { width: ${paperWidth}mm; margin: 0; padding: ${paperWidth === 58 ? '2mm' : '3mm'}; }
         img { max-width: 100%; }
         .divider { border-top: 1px dashed #000; margin: 2mm 0; }
       `
@@ -463,16 +463,16 @@ export function POSSystem() {
     }
     if (isPrinting) return
     setIsPrinting(true)
-    
+
     toast.loading("Mencetak via Bluetooth...", {
       id: "bluetooth-print",
     })
-    
+
     try {
       // Get GATT server and service
       const server = bluetoothDevice.gatt
       const services = await server.getPrimaryServices()
-      
+
       // Try to find a writable characteristic
       let writeCharacteristic = null
       for (const service of services) {
@@ -489,11 +489,11 @@ export function POSSystem() {
           continue
         }
       }
-      
+
       if (!writeCharacteristic) {
         throw new Error("Tidak dapat menemukan characteristic untuk menulis data")
       }
-      
+
       // Build receipt text for thermal printer
       const encoder = new TextEncoder()
       const ESC = "\x1B"
@@ -504,16 +504,16 @@ export function POSSystem() {
       const BOLD_OFF = ESC + "E0"
       const CUT = ESC + "i" // Cut paper
       const LINE = "--------------------------------\n"
-      
+
       // Default values when no template
       const showAddress = receiptTemplate?.show_address ?? true
       const showPhone = receiptTemplate?.show_phone ?? true
       const showDate = receiptTemplate?.show_date ?? true
       const showBarber = receiptTemplate?.show_barber ?? true
       const showCustomer = receiptTemplate?.show_customer ?? true
-      
+
       let receiptText = INIT
-      
+
       // Header
       receiptText += ALIGN_CENTER + BOLD_ON
       if (receiptTemplate?.header_text) {
@@ -522,16 +522,16 @@ export function POSSystem() {
         receiptText += "PIGTOWN BARBERSHOP\n"
       }
       receiptText += BOLD_OFF
-      
+
       if (showAddress && branchInfo?.address) {
         receiptText += branchInfo.address + "\n"
       }
       if (showPhone && branchInfo?.phone) {
         receiptText += "Telp: " + branchInfo.phone + "\n"
       }
-      
+
       receiptText += LINE
-      
+
       // Transaction info
       receiptText += ALIGN_LEFT
       if (showDate) {
@@ -544,9 +544,9 @@ export function POSSystem() {
       if (showCustomer && currentTransaction.customer_name) {
         receiptText += "Customer: " + currentTransaction.customer_name + "\n"
       }
-      
+
       receiptText += LINE
-      
+
       // Items
       for (const item of currentTransaction.items) {
         receiptText += item.service.name + "\n"
@@ -554,33 +554,33 @@ export function POSSystem() {
         receiptText += " ".repeat(Math.max(0, 32 - (`${item.quantity} x Rp ${formatRupiah(item.service.price.toString())}`.length + `Rp ${formatRupiah((item.service.price * item.quantity).toString())}`.length)))
         receiptText += `Rp ${formatRupiah((item.service.price * item.quantity).toString())}\n`
       }
-      
+
       receiptText += LINE
-      
+
       // Total
       receiptText += `Subtotal:` + " ".repeat(Math.max(0, 32 - (`Subtotal:`.length + `Rp ${formatRupiah(currentTransaction.subtotal)}`.length)))
       receiptText += `Rp ${formatRupiah(currentTransaction.subtotal)}\n`
-      
+
       if (currentTransaction.discount_amount > 0) {
         receiptText += `Diskon:` + " ".repeat(Math.max(0, 32 - (`Diskon:`.length + `-Rp ${formatRupiah(currentTransaction.discount_amount)}`.length)))
         receiptText += `-Rp ${formatRupiah(currentTransaction.discount_amount)}\n`
       }
-      
+
       receiptText += BOLD_ON
       receiptText += `TOTAL:` + " ".repeat(Math.max(0, 32 - (`TOTAL:`.length + `Rp ${formatRupiah(currentTransaction.total_amount.toString())}`.length)))
       receiptText += `Rp ${formatRupiah(currentTransaction.total_amount.toString())}\n`
       receiptText += BOLD_OFF
-      
+
       receiptText += `Pembayaran: ${currentTransaction.payment_method}\n`
-      
+
       // Cash details for cash payment
       if (currentTransaction.payment_method === 'cash' && currentTransaction.cash_amount) {
         receiptText += `Uang Diterima: Rp ${formatRupiah(currentTransaction.cash_amount.toString())}\n`
         receiptText += `Kembalian: Rp ${formatRupiah((currentTransaction.change_amount || 0).toString())}\n`
       }
-      
+
       receiptText += LINE
-      
+
       // Footer
       receiptText += ALIGN_CENTER
       if (receiptTemplate?.footer_text) {
@@ -588,10 +588,10 @@ export function POSSystem() {
       } else {
         receiptText += "Terima kasih atas kunjungan Anda!\n"
       }
-      
+
       receiptText += "\n\n\n" // Add spacing before cut
       receiptText += CUT // Cut paper
-      
+
       // Send to printer
       const data = encoder.encode(receiptText)
       if (writeCharacteristic.properties.writeWithoutResponse) {
@@ -599,7 +599,7 @@ export function POSSystem() {
       } else {
         await writeCharacteristic.writeValue(data)
       }
-      
+
       toast.dismiss("bluetooth-print")
       toast.success("Print via Bluetooth Berhasil! ��🖨️", {
         description: `Struk berhasil dicetak ke printer thermal ${bluetoothDevice.name}`,
@@ -620,13 +620,13 @@ export function POSSystem() {
   const filteredServices = services.filter(service => {
     // Must be active
     if (service.status !== "active") return false;
-    
+
     // Filter by type
     if (selectedType !== "all" && service.type !== selectedType) return false;
-    
+
     // Filter by category
     if (selectedCategory !== "semua" && service.service_categories?.name !== selectedCategory) return false;
-    
+
     return true;
   })
 
@@ -781,7 +781,7 @@ export function POSSystem() {
 
       const numericCashAmount = parseRupiah(cashAmount)
       const finalTotal = getFinalTotal()
-      
+
       if (numericCashAmount < finalTotal) {
         toast.error("Uang Tidak Cukup!", {
           description: `Uang yang diterima kurang Rp ${(finalTotal - numericCashAmount).toLocaleString("id-ID")}. Silakan input ulang nominal yang sesuai.`,
@@ -856,7 +856,7 @@ export function POSSystem() {
                 commission_value: Number(rule.commission_value),
                 commission_amount: commissionAmount * item.quantity,
               }
-              
+
               console.log('✅ Commission applied:', commissionData);
             } else {
               commissionData.commission_status = 'pending_rule'
@@ -1041,10 +1041,10 @@ export function POSSystem() {
                   // Remove duplicates
                   const isDuplicate = index !== self.findIndex((c) => c.name === category.name);
                   if (isDuplicate) return false;
-                  
+
                   // Filter by type
                   if (selectedType !== "all" && category.type !== selectedType) return false;
-                  
+
                   return true;
                 })
                 .map((category) => {
@@ -1288,10 +1288,10 @@ export function POSSystem() {
                             <Minus className="h-3 w-3" />
                           </Button>
                           <span className="w-6 text-center text-sm">{item.quantity}</span>
-                          <Button 
-                            size="icon" 
-                            variant="outline" 
-                            className="h-6 w-6" 
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            className="h-6 w-6"
                             onClick={() => updateQuantity(item.service.id, item.quantity + 1)}
                             disabled={item.service.type === "product" && item.quantity >= availableStock}
                           >
@@ -1539,7 +1539,7 @@ export function POSSystem() {
               }
             }
           `}</style>
-          
+
           <DialogHeader className="print:hidden">
             <DialogTitle className="flex items-center gap-2">
               <Receipt className="h-5 w-5" /> Struk Pembayaran
@@ -1552,111 +1552,111 @@ export function POSSystem() {
               {/* Container for print */}
               <div data-print-root>
                 {/* Receipt - visible on both screen and print */}
-                <div 
-                  className="bg-white p-3 border rounded-lg text-black print:p-0 print:border-0 print:rounded-none" 
+                <div
+                  className="bg-white p-3 border rounded-lg text-black print:p-0 print:border-0 print:rounded-none"
                   id="receipt-print"
                 >
-                {/* Header */}
-                <div className="text-center mb-2">
-                  {(receiptTemplate?.show_logo ?? false) && receiptTemplate?.logo_url && (
-                    <img src={receiptTemplate.logo_url} alt="Logo" className="h-10 w-auto mx-auto mb-2" />
-                  )}
-                  {receiptTemplate?.header_text ? (
-                    <div className="whitespace-pre-line font-bold text-xs">{receiptTemplate.header_text}</div>
-                  ) : (
-                    <div className="font-bold text-sm">PIGTOWN BARBERSHOP</div>
-                  )}
-                  {(receiptTemplate?.show_address ?? true) && branchInfo?.address && (
-                    <div className="text-[10px] mt-1">{branchInfo.address}</div>
-                  )}
-                  {(receiptTemplate?.show_phone ?? true) && branchInfo?.phone && (
-                    <div className="text-[10px]">Telp: {branchInfo.phone}</div>
-                  )}
-                </div>
-
-                <div className="border-t border-dashed border-gray-400 my-2" />
-
-                {/* Info */}
-                <div className="text-[10px] space-y-0.5">
-                  {(receiptTemplate?.show_date ?? true) && (
-                    <div>Tanggal: {currentTransaction.timestamp}</div>
-                  )}
-                  <div>No: {currentTransaction.receipt_number}</div>
-                  {(receiptTemplate?.show_barber ?? true) && (
-                    <div>Kasir: {currentTransaction.employeeName}</div>
-                  )}
-                  {(receiptTemplate?.show_customer ?? true) && currentTransaction.customer_name && (
-                    <div>Customer: {currentTransaction.customer_name}</div>
-                  )}
-                </div>
-
-                <div className="border-t border-dashed border-gray-400 my-2" />
-
-                {/* Items */}
-                <div className="space-y-1">
-                  {currentTransaction.items.map((item: any, index: number) => (
-                    <div key={index} className="text-[10px]">
-                      <div className="font-medium">{item.service.name}</div>
-                      <div className="flex justify-between">
-                        <span>{item.quantity} x Rp {formatRupiah(item.service.price.toString())}</span>
-                        <span>Rp {formatRupiah((item.service.price * item.quantity).toString())}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="border-t border-dashed border-gray-400 my-2" />
-
-                {/* Total */}
-                <div className="text-[10px] space-y-0.5">
-                  <div className="flex justify-between">
-                    <span>Subtotal:</span>
-                    <span>Rp {formatRupiah(currentTransaction.subtotal)}</span>
+                  {/* Header */}
+                  <div className="text-center mb-2">
+                    {(receiptTemplate?.show_logo ?? false) && receiptTemplate?.logo_url && (
+                      <img src={receiptTemplate.logo_url} alt="Logo" className="h-10 w-auto mx-auto mb-2" />
+                    )}
+                    {receiptTemplate?.header_text ? (
+                      <div className="whitespace-pre-line font-bold text-xs">{receiptTemplate.header_text}</div>
+                    ) : (
+                      <div className="font-bold text-sm">PIGTOWN BARBERSHOP</div>
+                    )}
+                    {(receiptTemplate?.show_address ?? true) && branchInfo?.address && (
+                      <div className="text-[10px] mt-1">{branchInfo.address}</div>
+                    )}
+                    {(receiptTemplate?.show_phone ?? true) && branchInfo?.phone && (
+                      <div className="text-[10px]">Telp: {branchInfo.phone}</div>
+                    )}
                   </div>
-                  {currentTransaction.discount_amount > 0 && (
+
+                  <div className="border-t border-dashed border-gray-400 my-2" />
+
+                  {/* Info */}
+                  <div className="text-[10px] space-y-0.5">
+                    {(receiptTemplate?.show_date ?? true) && (
+                      <div>Tanggal: {currentTransaction.timestamp}</div>
+                    )}
+                    <div>No: {currentTransaction.receipt_number}</div>
+                    {(receiptTemplate?.show_barber ?? true) && (
+                      <div>Kasir: {currentTransaction.employeeName}</div>
+                    )}
+                    {(receiptTemplate?.show_customer ?? true) && currentTransaction.customer_name && (
+                      <div>Customer: {currentTransaction.customer_name}</div>
+                    )}
+                  </div>
+
+                  <div className="border-t border-dashed border-gray-400 my-2" />
+
+                  {/* Items */}
+                  <div className="space-y-1">
+                    {currentTransaction.items.map((item: any, index: number) => (
+                      <div key={index} className="text-[10px]">
+                        <div className="font-medium">{item.service.name}</div>
+                        <div className="flex justify-between">
+                          <span>{item.quantity} x Rp {formatRupiah(item.service.price.toString())}</span>
+                          <span>Rp {formatRupiah((item.service.price * item.quantity).toString())}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="border-t border-dashed border-gray-400 my-2" />
+
+                  {/* Total */}
+                  <div className="text-[10px] space-y-0.5">
                     <div className="flex justify-between">
-                      <span>Diskon:</span>
-                      <span>-Rp {formatRupiah(currentTransaction.discount_amount)}</span>
+                      <span>Subtotal:</span>
+                      <span>Rp {formatRupiah(currentTransaction.subtotal)}</span>
                     </div>
-                  )}
-                  <div className="flex justify-between font-bold text-xs pt-1 mt-1 border-t border-gray-300">
-                    <span>TOTAL:</span>
-                    <span>Rp {formatRupiah(currentTransaction.total_amount)}</span>
-                  </div>
-                  <div className="mt-1">Pembayaran: {currentTransaction.payment_method}</div>
-                  {currentTransaction.payment_method === 'cash' && currentTransaction.cash_amount && (
-                    <>
-                      <div className="flex justify-between mt-0.5">
-                        <span>Uang Diterima:</span>
-                        <span>Rp {formatRupiah(currentTransaction.cash_amount)}</span>
-                      </div>
+                    {currentTransaction.discount_amount > 0 && (
                       <div className="flex justify-between">
-                        <span>Kembalian:</span>
-                        <span>Rp {formatRupiah(currentTransaction.change_amount || 0)}</span>
+                        <span>Diskon:</span>
+                        <span>-Rp {formatRupiah(currentTransaction.discount_amount)}</span>
                       </div>
-                    </>
-                  )}
-                </div>
+                    )}
+                    <div className="flex justify-between font-bold text-xs pt-1 mt-1 border-t border-gray-300">
+                      <span>TOTAL:</span>
+                      <span>Rp {formatRupiah(currentTransaction.total_amount)}</span>
+                    </div>
+                    <div className="mt-1">Pembayaran: {currentTransaction.payment_method}</div>
+                    {currentTransaction.payment_method === 'cash' && currentTransaction.cash_amount && (
+                      <>
+                        <div className="flex justify-between mt-0.5">
+                          <span>Uang Diterima:</span>
+                          <span>Rp {formatRupiah(currentTransaction.cash_amount)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Kembalian:</span>
+                          <span>Rp {formatRupiah(currentTransaction.change_amount || 0)}</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
 
-                <div className="border-t border-dashed border-gray-400 my-2" />
+                  <div className="border-t border-dashed border-gray-400 my-2" />
 
-                {/* Footer */}
-                <div className="text-center text-[10px]">
-                  {receiptTemplate?.footer_text ? (
-                    <div className="whitespace-pre-line">{receiptTemplate.footer_text}</div>
-                  ) : (
-                    <div>Terima kasih atas kunjungan Anda!</div>
-                  )}
+                  {/* Footer */}
+                  <div className="text-center text-[10px]">
+                    {receiptTemplate?.footer_text ? (
+                      <div className="whitespace-pre-line">{receiptTemplate.footer_text}</div>
+                    ) : (
+                      <div>Terima kasih atas kunjungan Anda!</div>
+                    )}
+                  </div>
                 </div>
-              </div>
               </div>
 
               <div className="flex gap-2 print:hidden">
                 <Button variant="outline" onClick={() => setIsReceiptOpen(false)} className="flex-1">
                   Tutup
                 </Button>
-                <Button 
-                  onClick={bluetoothConnected ? handlePrintViaBluetooth : handlePrint} 
+                <Button
+                  onClick={bluetoothConnected ? handlePrintViaBluetooth : handlePrint}
                   disabled={isPrinting}
                   className="flex-1 gap-2"
                 >

@@ -62,6 +62,7 @@ export const services = pgTable('services', {
   stock: integer('stock'),
   aktif: boolean('aktif').default(true),
   commission_rate: numeric('commission_rate'),
+  image_url: text('image_url'),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at'),
 })

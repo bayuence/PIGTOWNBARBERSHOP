@@ -1053,9 +1053,16 @@ export function setupEmployeeRealtime(callback: any) {
 
 export async function addEmployee(data: any) {
   try {
+    const insertData = {
+      ...data,
+      role: data.role || 'employee',
+      // Provide a dummy password hash if not set. User can login with PIN or reset password later.
+      password: data.password || '$2a$10$dummyHashDummyHashDummyHashDummyHashDummyHashDummyHa',
+    }
+    
     const { data: newEmp, error } = await supabase
       .from('users')
-      .insert([data])
+      .insert([insertData])
       .select()
       .single()
     if (error) throw error

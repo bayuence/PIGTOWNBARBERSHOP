@@ -376,11 +376,11 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
   }
 
   return (
-    <div className="w-full -mx-6">
+    <div className="w-full">
       <div className="space-y-4">
         {/* Main Attendance Card */}
-        <Card className="shadow-sm border-0 border-t border-b border-gray-200 rounded-none overflow-hidden">
-          <CardHeader className="bg-gradient-to-r from-red-600 to-orange-600 text-white p-4">
+        <Card className="shadow-lg border-0 rounded-xl overflow-hidden">
+          <CardHeader className="bg-gradient-to-r from-red-600 to-orange-600 text-white p-6 pr-12">
             <CardTitle className="flex items-center gap-3 text-xl font-bold mb-2">
               <Sparkles className="h-6 w-6" />
               Kontrol Presensi Karyawan

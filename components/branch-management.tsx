@@ -331,9 +331,9 @@ export default function BranchManagement() {
                 maxEmployees: 10,
                 currentEmployees: 0,
                 status: shift.is_active ? 'active' : 'inactive',
-                breakTimes: [],
+                breakTimes: shift.break_times || [],
                 minStaff: 1,
-                hasBreakTime: false,
+                hasBreakTime: shift.break_times && shift.break_times.length > 0 ? true : false,
               }));
             }
           } catch (error) {
@@ -629,6 +629,7 @@ export default function BranchManagement() {
             start_time: newShift.startTime || "09:00",
             end_time: newShift.endTime || "17:00",
             is_active: true,
+            break_times: newShift.breakTimes || [],
           },
         ])
         .select()
@@ -641,6 +642,26 @@ export default function BranchManagement() {
 
       console.log("[v0] Shift added successfully:", data)
       toast.success("Shift berhasil ditambahkan")
+
+      if (selectedBranch && data && data[0]) {
+        const newlyAddedShift: Shift = {
+          id: data[0].id,
+          name: newShift.name,
+          startTime: newShift.startTime || "09:00",
+          endTime: newShift.endTime || "17:00",
+          days: newShift.days || [],
+          maxEmployees: 10,
+          currentEmployees: 0,
+          status: 'active',
+          breakTimes: newShift.breakTimes || [],
+          minStaff: 1,
+          hasBreakTime: newShift.breakTimes && newShift.breakTimes.length > 0 ? true : false,
+        };
+        setSelectedBranch({
+          ...selectedBranch,
+          shifts: [...(selectedBranch.shifts || []), newlyAddedShift]
+        });
+      }
 
       // Reset form
       setNewShift({
@@ -846,6 +867,7 @@ export default function BranchManagement() {
           start_time: updatedShift.startTime,
           end_time: updatedShift.endTime,
           is_active: updatedShift.status === 'active',
+          break_times: updatedShift.breakTimes || [],
         })
         .eq("id", editingShift.id)
         .eq("branch_id", branchId)
@@ -858,6 +880,13 @@ export default function BranchManagement() {
 
       console.log("[v0] Shift updated successfully")
       toast.success("Shift berhasil diperbarui")
+
+      if (selectedBranch) {
+        const updatedShifts = (selectedBranch.shifts || []).map(s => 
+          s.id === editingShift.id ? updatedShift : s
+        );
+        setSelectedBranch({ ...selectedBranch, shifts: updatedShifts });
+      }
 
       setEditingShift(null)
       setNewShift({
@@ -899,6 +928,13 @@ export default function BranchManagement() {
 
         console.log("[v0] Shift deleted successfully")
         toast.success("Shift berhasil dihapus")
+
+        if (selectedBranch) {
+          setSelectedBranch({
+            ...selectedBranch,
+            shifts: (selectedBranch.shifts || []).filter(s => s.id !== shiftId)
+          });
+        }
 
         // Refresh data
         await fetchBranches()
