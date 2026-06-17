@@ -59,7 +59,7 @@ interface DailyAttendanceSummary {
   shifts: AttendanceRecord[]
   totalDailyHours: number
   totalDailyBreaks: number
-  currentStatus: "present" | "absent" | "on-break" | "checked-out"
+  currentStatus: "present" | "absent" | "late" | "on-break" | "checked-out"
   canCheckIn: boolean
 }
 
@@ -238,10 +238,10 @@ export function AttendanceSystem() {
       const branchIdMap = new Map()
       if (!branchesError && branchesData && branchesData.length > 0) {
         branchesData.forEach((branch: any) => {
-          branchNameMap.set(branch.id, branch.name)
-          branchIdMap.set(branch.name, branch.id)
+          branchNameMap.set(String(branch.id), branch.name)
+          branchIdMap.set(branch.name, String(branch.id))
         })
-        const branchList = branchesData.map((b: any) => ({ id: b.id, name: b.name }))
+        const branchList = branchesData.map((b: any) => ({ id: String(b.id), name: b.name }))
         setBranches(branchList)
         setBranchIdMap(branchIdMap)
       } else {
@@ -265,8 +265,8 @@ export function AttendanceSystem() {
           id: String(user.id), // Convert to string for consistency
           name: user.name,
           position: user.position || "Karyawan",
-          branch: branchNameMap.get(user.branch_id) || "Unknown Branch",
-          branchId: user.branch_id,
+          branch: branchNameMap.get(String(user.branch_id)) || "Unknown Branch",
+          branchId: user.branch_id ? String(user.branch_id) : "",
           avatar: user.avatar,
         }))
         console.log('[loadEmployeesAndBranches] Loaded employees:', employeeList.map(e => ({ id: e.id, name: e.name, idType: typeof e.id })))
@@ -423,11 +423,15 @@ export function AttendanceSystem() {
           let shiftName = attendanceData.shift_type || "Unknown"
           // Removed branches.shifts lookup since we're not joining branches anymore
 
+          const recordBranchId = attendanceData.branch_id ? String(attendanceData.branch_id) : ""
+          const branchObj = branches.find((b) => String(b.id) === recordBranchId)
+          const branchName = branchObj ? branchObj.name : (emp.branch || "Unknown Branch")
+
           return {
             id: attendanceData.id,
             employeeId: emp.id,
             employeeName: emp.name,
-            branch: emp.branch, // Use employee's branch instead
+            branch: branchName, // Use resolved branch name
             branchId: attendanceData.branch_id,
             date: selectedDate,
             shift: shiftName,
@@ -439,7 +443,7 @@ export function AttendanceSystem() {
             totalWorkingHours: totalWorkingHours,
             status,
             photo: attendanceData.check_in_photo || attendanceData.check_out_photo,
-            location: emp.branch, // Use employee's branch instead
+            location: branchName, // Use resolved branch name
           }
         })
 
@@ -530,7 +534,7 @@ export function AttendanceSystem() {
 
     setBranchShifts(shifts || [])
     if (shifts && shifts.length > 0) {
-      setSelectedShift(shifts[0].type || shifts[0].id || "pagi")
+      setSelectedShift((shifts[0].type || shifts[0].id || "pagi") as "pagi" | "siang" | "malam")
     }
   }, [])
 
@@ -601,7 +605,7 @@ export function AttendanceSystem() {
           }
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error accessing camera:", error)
       setCameraPermission("denied")
       setIsCameraReady(false)
@@ -861,34 +865,34 @@ export function AttendanceSystem() {
     }
   }
 
-  const handleBreakAction = async (action: "break-start" | "break-end") => {
-    if (!selectedEmployee || isProcessing) return
+  const handleBreakAction = async (action: "break-start" | "break-end", employeeToUse: Employee) => {
+    if (!employeeToUse || isProcessing) return
 
     setIsProcessing(true)
 
     try {
-      const summary = dailySummaries.find((s) => s.employeeId === selectedEmployee.id)
+      const summary = dailySummaries.find((s) => s.employeeId === employeeToUse.id)
       const activeShift = summary?.shifts.find((s) => s.status === "present" || s.status === "on-break")
 
       if (!activeShift?.id) {
         throw new Error("Karyawan belum check-in di shift manapun")
       }
 
-      const currentTime = new Date().toISOString()
-      const updates: any = { updated_at: new Date().toISOString() }
+      const now = new Date()
+      const currentTimeString = format(now, "HH:mm:ss")
+      const updates: any = { updated_at: now.toISOString() }
 
       if (action === "break-start") {
-        updates.break_start_time = currentTime
+        updates.break_start_time = currentTimeString
         updates.status = "on_break"
       } else {
-        updates.break_end_time = currentTime
+        updates.break_end_time = currentTimeString
         updates.status = "checked_in"
 
         if (activeShift.breakStart) {
-          const breakStart = new Date(activeShift.breakStart)
-          const breakEnd = new Date(currentTime)
-          const breakDuration = Math.round((breakEnd.getTime() - breakStart.getTime()) / (1000 * 60))
-          updates.total_break_minutes = (activeShift.totalBreakTime || 0) + breakDuration
+          const breakStart = new Date(`${selectedDate}T${activeShift.breakStart}`)
+          const breakDuration = Math.round((now.getTime() - breakStart.getTime()) / (1000 * 60))
+          updates.break_duration = (activeShift.totalBreakTime || 0) + breakDuration
         }
       }
 
@@ -898,7 +902,7 @@ export function AttendanceSystem() {
 
       toast({
         title: action === "break-start" ? "Istirahat Dimulai" : "Istirahat Selesai",
-        description: `${selectedEmployee.name} ${action === "break-start" ? "mulai istirahat" : "lanjut bekerja"}`,
+        description: `${employeeToUse.name} ${action === "break-start" ? "mulai istirahat" : "lanjut bekerja"}`,
       })
 
       await fetchAttendanceRecords()
@@ -1045,13 +1049,13 @@ export function AttendanceSystem() {
   const handleBreakStart = (employee: Employee) => {
     if (isProcessing) return
     setSelectedEmployee(employee)
-    handleBreakAction("break-start")
+    handleBreakAction("break-start", employee)
   }
 
   const handleBreakEnd = (employee: Employee) => {
     if (isProcessing) return
     setSelectedEmployee(employee)
-    handleBreakAction("break-end")
+    handleBreakAction("break-end", employee)
   }
 
   const openCheckOutCamera = async (employee: Employee) => {
@@ -1526,7 +1530,7 @@ export function AttendanceSystem() {
               </Label>
               <Select
                 value={selectedShift}
-                onValueChange={(value) => setSelectedShift(value)}
+                onValueChange={(value) => setSelectedShift(value as "pagi" | "siang" | "malam")}
                 disabled={!selectedCheckInBranch || branchShifts.length === 0}
               >
                 <SelectTrigger className="text-sm">
