@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "@/components/ui/use-toast"
 import { Shield, Lock, Eye, EyeOff, AlertCircle, Loader2, User } from "lucide-react"
-import { supabase, getCurrentUser } from "@/lib/supabase"
 
 interface PinAuthenticationProps {
   isOpen: boolean
@@ -64,21 +63,21 @@ export function PinAuthentication({
     }
   }, [isLocked, lockTimeRemaining])
 
-  // Fungsi untuk mencari user berdasarkan PIN
+  // Fungsi untuk mencari user berdasarkan PIN via API route (server-side, bypass RLS)
   const findUserByPin = async (pinValue: string): Promise<any> => {
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('pin', pinValue)
-        .single()
+      const response = await fetch('/api/verify-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: pinValue }),
+      })
 
-      if (error) {
-        // PIN tidak ditemukan atau error
+      if (!response.ok) {
         return null
       }
 
-      return data
+      const result = await response.json()
+      return result.user || null
     } catch (error) {
       console.error('Error finding user by PIN:', error)
       return null

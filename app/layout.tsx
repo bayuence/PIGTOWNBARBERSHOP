@@ -1,6 +1,5 @@
 import { Metadata } from "next";
 import { Inter } from "next/font/google"
-import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 import type { ReactNode } from "react"
 import PwaUpdater from "@/components/PwaUpdater"
@@ -41,16 +40,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.className} bg-white`}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="light"
-          enableSystem={false}
-          disableTransitionOnChange
-        >
           <PwaUpdater />
           <Toaster position="top-center" richColors closeButton />
           {children}
-        </ThemeProvider>
       </body>
     </html>
   )
