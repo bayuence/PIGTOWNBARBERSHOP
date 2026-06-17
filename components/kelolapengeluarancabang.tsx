@@ -38,7 +38,7 @@ import {
   Calendar,
   BarChart3,
   PieChart,
-  Trash2 ,
+  Trash2,
 } from "lucide-react"
 import {
   getAllExpensesWithDetails,
@@ -105,8 +105,8 @@ export function KelolaPengeluaranCabang() {
 
   useEffect(() => {
     loadData()
-    
-    const globalChannel = setupGlobalEventsListener((event, payload) => {
+
+    const globalChannel = setupGlobalEventsListener((event: string, payload: any) => {
       if (event === 'expense_deleted' || event === 'expense_updated') {
         console.log('Expense event received:', event, payload)
         loadData()
@@ -125,13 +125,13 @@ export function KelolaPengeluaranCabang() {
   useEffect(() => {
     const channel = supabase
       .channel('expenses-management')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'expenses' 
-        }, 
-        (payload) => {
+      .on('postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'expenses'
+        },
+        (payload: any) => {
           console.log('🔄 Real-time update in management:', payload)
           loadData()
         }
@@ -173,18 +173,18 @@ export function KelolaPengeluaranCabang() {
     let filtered = expenses
 
     if (searchTerm) {
-      filtered = filtered.filter(expense =>
+      filtered = filtered.filter((expense: Expense) =>
         expense.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
         expense.notes?.toLowerCase().includes(searchTerm.toLowerCase())
       )
     }
 
     if (statusFilter !== "all") {
-      filtered = filtered.filter(expense => expense.status === statusFilter)
+      filtered = filtered.filter((expense: Expense) => expense.status === statusFilter)
     }
 
     if (branchFilter !== "all") {
-      filtered = filtered.filter(expense => expense.branch_id === branchFilter)
+      filtered = filtered.filter((expense: Expense) => expense.branch_id === branchFilter)
     }
 
     setFilteredExpenses(filtered)
@@ -349,11 +349,11 @@ export function KelolaPengeluaranCabang() {
           <div className="flex flex-col sm:flex-row gap-4 items-center">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Cari pengajuan..." 
+              <Input
+                placeholder="Cari pengajuan..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)} 
-                className="pl-10" 
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
               />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -373,7 +373,7 @@ export function KelolaPengeluaranCabang() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Semua Cabang</SelectItem>
-                {branches.map((branch) => (
+                {branches.map((branch: Branch) => (
                   <SelectItem key={branch.id} value={branch.id}>
                     {branch.name}
                   </SelectItem>
@@ -401,9 +401,9 @@ export function KelolaPengeluaranCabang() {
             </Card>
           ) : (
             <div className="space-y-4">
-              {filteredExpenses.map((expense) => {
+              {filteredExpenses.map((expense: Expense) => {
                 const categoryInfo = getCategoryInfo(expense.category)
-                const branchName = expense.branch_id ? branches.find(b => b.id === expense.branch_id)?.name : "Semua Cabang"
+                const branchName = expense.branch_id ? branches.find((b: Branch) => b.id === expense.branch_id)?.name : "Semua Cabang"
                 return (
                   <Card key={expense.id} className="hover:shadow-lg transition-shadow">
                     <CardContent className="p-6">
@@ -449,16 +449,16 @@ export function KelolaPengeluaranCabang() {
                           </Button>
                           {expense.status === "pending" && (
                             <>
-                              <Button 
-                                variant="default" 
-                                size="sm" 
+                              <Button
+                                variant="default"
+                                size="sm"
                                 className="bg-green-600 hover:bg-green-700"
                                 onClick={() => { setSelectedExpense(expense); setIsApproveDialogOpen(true) }}
                               >
                                 <CheckCircle className="h-4 w-4" />
                               </Button>
-                              <Button 
-                                variant="destructive" 
+                              <Button
+                                variant="destructive"
                                 size="sm"
                                 onClick={() => { setSelectedExpense(expense); setIsRejectDialogOpen(true) }}
                               >
@@ -466,9 +466,9 @@ export function KelolaPengeluaranCabang() {
                               </Button>
                             </>
                           )}
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             className="text-red-600 hover:text-red-700"
                             onClick={() => handleDeleteExpense(expense.id)}
                           >
@@ -517,7 +517,7 @@ export function KelolaPengeluaranCabang() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {branches.map((branch) => {
+                  {branches.map((branch: Branch) => {
                     const branchExpenses = expenses.filter(e => e.branch_id === branch.id)
                     const branchTotal = branchExpenses.reduce((sum, e) => sum + e.amount, 0)
                     return (
@@ -555,7 +555,7 @@ export function KelolaPengeluaranCabang() {
                 <div>
                   <Label className="text-muted-foreground">Cabang</Label>
                   <p className="font-medium">
-                    {selectedExpense.branch_id ? branches.find(b => b.id === selectedExpense.branch_id)?.name : "Semua Cabang"}
+                    {selectedExpense.branch_id ? branches.find((b: Branch) => b.id === selectedExpense.branch_id)?.name : "Semua Cabang"}
                   </p>
                 </div>
                 <div>
@@ -609,13 +609,13 @@ export function KelolaPengeluaranCabang() {
               <p className="font-medium">{selectedExpense.description}</p>
               <p className="text-2xl font-bold text-green-600">{formatPrice(selectedExpense.amount)}</p>
               <p className="text-sm text-muted-foreground">
-                {selectedExpense.branch_id ? branches.find(b => b.id === selectedExpense.branch_id)?.name : "Semua Cabang"}
+                {selectedExpense.branch_id ? branches.find((b: Branch) => b.id === selectedExpense.branch_id)?.name : "Semua Cabang"}
               </p>
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsApproveDialogOpen(false)}>Batal</Button>
-            <Button 
+            <Button
               onClick={() => selectedExpense && handleApprove(selectedExpense.id)}
               className="bg-green-600 hover:bg-green-700"
             >
@@ -637,7 +637,7 @@ export function KelolaPengeluaranCabang() {
                 <p className="font-medium">{selectedExpense.description}</p>
                 <p className="text-2xl font-bold text-red-600">{formatPrice(selectedExpense.amount)}</p>
                 <p className="text-sm text-muted-foreground">
-                  {selectedExpense.branch_id ? branches.find(b => b.id === selectedExpense.branch_id)?.name : "Semua Cabang"}
+                  {selectedExpense.branch_id ? branches.find((b: Branch) => b.id === selectedExpense.branch_id)?.name : "Semua Cabang"}
                 </p>
               </div>
               <div className="space-y-2">
@@ -645,7 +645,7 @@ export function KelolaPengeluaranCabang() {
                 <Textarea 
                   id="rejectReason" 
                   value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value)} 
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setRejectReason(e.target.value)} 
                   placeholder="Masukkan alasan penolakan..." 
                   required 
                 />
@@ -654,8 +654,8 @@ export function KelolaPengeluaranCabang() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsRejectDialogOpen(false)}>Batal</Button>
-            <Button 
-              onClick={() => selectedExpense && handleReject(selectedExpense.id)} 
+            <Button
+              onClick={() => selectedExpense && handleReject(selectedExpense.id)}
               variant="destructive"
               disabled={!rejectReason.trim()}
             >

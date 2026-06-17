@@ -129,7 +129,7 @@ export function PengeluaranCabang() {
             schema: 'public', 
             table: 'expenses' 
           }, 
-          (payload) => {
+          (payload: any) => {
             console.log('🔄 Real-time update received:', payload)
             loadData()
           }
@@ -178,7 +178,7 @@ export function PengeluaranCabang() {
       selectedCategory 
     });
     
-    const filtered = expenses.filter((expense) => {
+    const filtered = expenses.filter((expense: Expense) => {
       const matchesBranch = selectedBranch === "all" || expense.branch_id === selectedBranch
       const matchesCategory = selectedCategory === "all" || expense.category === selectedCategory
       return matchesBranch && matchesCategory
@@ -219,7 +219,7 @@ export function PengeluaranCabang() {
   }
 
   const getCategoryInfo = (categoryId: string) => {
-    return categories.find((cat) => cat.id === categoryId) || categories[0]
+    return categories.find((cat: any) => cat.id === categoryId) || categories[0]
   }
 
   const formatPrice = (price: number) => {
@@ -381,13 +381,13 @@ export function PengeluaranCabang() {
                   <Label className="text-xs sm:text-sm">Kategori</Label>
                   <Select
                     value={newExpense.category}
-                    onValueChange={(value) => setNewExpense({ ...newExpense, category: value })}
+                    onValueChange={(value: string) => setNewExpense({ ...newExpense, category: value })}
                   >
                     <SelectTrigger className="text-xs sm:text-sm">
                       <SelectValue placeholder="Pilih kategori" />
                     </SelectTrigger>
                     <SelectContent>
-                      {categories.map((category) => (
+                      {categories.map((category: any) => (
                         <SelectItem key={category.id} value={category.id} className="text-xs sm:text-sm">
                           <div className="flex items-center gap-2">
                             <category.icon className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -402,13 +402,13 @@ export function PengeluaranCabang() {
                   <Label className="text-xs sm:text-sm">Cabang</Label>
                   <Select
                     value={newExpense.branch_id}
-                    onValueChange={(value) => setNewExpense({ ...newExpense, branch_id: value })}
+                    onValueChange={(value: string) => setNewExpense({ ...newExpense, branch_id: value })}
                   >
                     <SelectTrigger className="text-xs sm:text-sm">
                       <SelectValue placeholder="Pilih cabang" />
                     </SelectTrigger>
                     <SelectContent>
-                      {branches.map((branch) => (
+                      {branches.map((branch: Branch) => (
                         <SelectItem key={branch.id} value={branch.id} className="text-xs sm:text-sm">
                           {branch.name}
                         </SelectItem>
@@ -421,7 +421,7 @@ export function PengeluaranCabang() {
                   <Input
                     id="amount"
                     value={newExpense.amount}
-                    onChange={(e) => {
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       const formatted = formatInputNumber(e.target.value)
                       setNewExpense({ ...newExpense, amount: formatted })
                     }}
@@ -434,7 +434,7 @@ export function PengeluaranCabang() {
                   <Textarea
                     id="description"
                     value={newExpense.description}
-                    onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewExpense({ ...newExpense, description: e.target.value })}
                     placeholder="Deskripsi detail pengeluaran..."
                     className="text-xs sm:text-sm min-h-[80px]"
                   />
@@ -444,7 +444,7 @@ export function PengeluaranCabang() {
                   <Textarea
                     id="notes"
                     value={newExpense.notes}
-                    onChange={(e) => setNewExpense({ ...newExpense, notes: e.target.value })}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewExpense({ ...newExpense, notes: e.target.value })}
                     placeholder="Catatan tambahan..."
                     className="text-xs sm:text-sm min-h-[60px]"
                   />
@@ -494,7 +494,7 @@ export function PengeluaranCabang() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all" className="text-xs sm:text-sm">Semua Cabang</SelectItem>
-              {branches.map((branch) => (
+              {branches.map((branch: Branch) => (
                 <SelectItem key={branch.id} value={branch.id} className="text-xs sm:text-sm">
                   {branch.name}
                 </SelectItem>
@@ -509,7 +509,7 @@ export function PengeluaranCabang() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all" className="text-xs sm:text-sm">Semua Kategori</SelectItem>
-              {categories.map((category) => (
+              {categories.map((category: any) => (
                 <SelectItem key={category.id} value={category.id} className="text-xs sm:text-sm">
                   {category.name}
                 </SelectItem>
@@ -540,10 +540,10 @@ export function PengeluaranCabang() {
               </CardContent>
             </Card>
           ) : (
-            filteredExpenses.map((expense) => {
+            filteredExpenses.map((expense: Expense) => {
               const categoryInfo = getCategoryInfo(expense.category)
               const branchName = expense.branch_id 
-                ? branches.find(b => b.id === expense.branch_id)?.name 
+                ? branches.find((b: Branch) => b.id === expense.branch_id)?.name 
                 : "Semua Cabang"
               
               return (
@@ -637,9 +637,9 @@ export function PengeluaranCabang() {
 
         <TabsContent value="categories" className="space-y-4 sm:space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            {categories.map((category) => {
-              const categoryExpenses = filteredExpenses.filter((e) => e.category === category.id)
-              const categoryTotal = categoryExpenses.reduce((sum, e) => sum + e.amount, 0)
+            {categories.map((category: any) => {
+              const categoryExpenses = filteredExpenses.filter((e: Expense) => e.category === category.id)
+              const categoryTotal = categoryExpenses.reduce((sum: number, e: Expense) => sum + e.amount, 0)
               return (
                 <Card key={category.id} className="border-l-4 border-l-red-500">
                   <CardHeader className="p-3 sm:p-4 pb-2">
@@ -652,7 +652,7 @@ export function PengeluaranCabang() {
                   <CardContent className="p-3 sm:p-4 pt-0">
                     <div className="text-xl sm:text-2xl font-bold text-red-600 mb-3 sm:mb-4">{formatPrice(categoryTotal)}</div>
                     <div className="space-y-1 sm:space-y-2">
-                      {categoryExpenses.slice(0, 3).map((expense) => (
+                      {categoryExpenses.slice(0, 3).map((expense: Expense) => (
                         <div key={expense.id} className="flex justify-between text-xs sm:text-sm">
                           <span className="truncate max-w-[120px] sm:max-w-[150px]">{expense.description}</span>
                           <span className="font-medium">{formatPrice(expense.amount)}</span>
@@ -685,13 +685,13 @@ export function PengeluaranCabang() {
                 <Label className="text-xs sm:text-sm">Kategori</Label>
                 <Select
                   value={currentExpense.category}
-                  onValueChange={(value) => setCurrentExpense({ ...currentExpense, category: value })}
+                  onValueChange={(value: string) => setCurrentExpense({ ...currentExpense, category: value })}
                 >
                   <SelectTrigger className="text-xs sm:text-sm">
                     <SelectValue placeholder="Pilih kategori" />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.map((category) => (
+                    {categories.map((category: any) => (
                       <SelectItem key={category.id} value={category.id} className="text-xs sm:text-sm">
                         <div className="flex items-center gap-2">
                           <category.icon className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -706,13 +706,13 @@ export function PengeluaranCabang() {
                 <Label className="text-xs sm:text-sm">Cabang</Label>
                 <Select
                   value={currentExpense.branch_id || ""}
-                  onValueChange={(value) => setCurrentExpense({ ...currentExpense, branch_id: value })}
+                  onValueChange={(value: string) => setCurrentExpense({ ...currentExpense, branch_id: value })}
                 >
                   <SelectTrigger className="text-xs sm:text-sm">
                     <SelectValue placeholder="Pilih cabang" />
                   </SelectTrigger>
                   <SelectContent>
-                    {branches.map((branch) => (
+                    {branches.map((branch: Branch) => (
                       <SelectItem key={branch.id} value={branch.id} className="text-xs sm:text-sm">
                         {branch.name}
                       </SelectItem>
@@ -725,7 +725,7 @@ export function PengeluaranCabang() {
                 <Input
                   id="edit-amount"
                   value={formatInputNumber(currentExpense.amount.toString())}
-                  onChange={(e) => {
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                     const formatted = formatInputNumber(e.target.value)
                     setCurrentExpense({ ...currentExpense, amount: Number(unformatInputNumber(formatted)) })
                   }}
@@ -738,7 +738,7 @@ export function PengeluaranCabang() {
                 <Textarea
                   id="edit-description"
                   value={currentExpense.description}
-                  onChange={(e) => setCurrentExpense({ ...currentExpense, description: e.target.value })}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCurrentExpense({ ...currentExpense, description: e.target.value })}
                   placeholder="Deskripsi detail pengeluaran..."
                   className="text-xs sm:text-sm min-h-[80px]"
                 />
@@ -748,7 +748,7 @@ export function PengeluaranCabang() {
                 <Textarea
                   id="edit-notes"
                   value={currentExpense.notes || ""}
-                  onChange={(e) => setCurrentExpense({ ...currentExpense, notes: e.target.value })}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCurrentExpense({ ...currentExpense, notes: e.target.value })}
                   placeholder="Catatan tambahan..."
                   className="text-xs sm:text-sm min-h-[60px]"
                 />
@@ -783,7 +783,7 @@ export function PengeluaranCabang() {
                     <Label className="text-xs sm:text-sm text-muted-foreground">Cabang</Label>
                     <p className="font-medium text-sm sm:text-base">
                       {currentExpense.branch_id 
-                        ? branches.find(b => b.id === currentExpense.branch_id)?.name 
+                        ? branches.find((b: Branch) => b.id === currentExpense.branch_id)?.name 
                         : "Semua Cabang"}
                     </p>
                   </div>
