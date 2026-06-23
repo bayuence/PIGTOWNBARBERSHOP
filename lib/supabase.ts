@@ -1387,16 +1387,70 @@ export async function getEmployeeAttendanceWithPhotos(userId: string, limit = 30
   try {
     const { data, error } = await supabase
       .from('attendance')
-      .select('*')
+      .select(`
+        *,
+        branches:branch_id (
+          id,
+          name,
+          shifts
+        )
+      `)
       .eq('user_id', userId)
       .order('date', { ascending: false })
       .limit(limit)
     
     if (error) throw error
-    return { data: data || [], error: null }
+
+    const records = data || []
+
+    // Hitung statistik bulan ini
+    const now = new Date()
+    const currentMonth = now.getMonth()
+    const currentYear = now.getFullYear()
+
+    const thisMonthRecords = records.filter((r: any) => {
+      const d = new Date(r.date)
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear
+    })
+
+    const presentDays = thisMonthRecords.filter((r: any) =>
+      r.status === 'checked_in' || r.status === 'checked_out' || r.status === 'on_break'
+    ).length
+
+    const lateDays = thisMonthRecords.filter((r: any) => r.is_late === true).length
+
+    const totalWorkDays = thisMonthRecords.length
+
+    const overtimeHours = thisMonthRecords.reduce((sum: number, r: any) => {
+      return sum + (r.overtime_hours || 0)
+    }, 0)
+
+    // Perkiraan hari kerja bulan ini (20 hari kerja sebagai default)
+    const workingDaysInMonth = 26
+    const attendanceRate = totalWorkDays > 0
+      ? Math.round((presentDays / Math.max(totalWorkDays, 1)) * 100)
+      : 0
+
+    return {
+      data: records,
+      attendanceRate,
+      presentDays,
+      lateDays,
+      totalWorkDays,
+      overtimeHours: Math.round(overtimeHours * 10) / 10,
+      error: null,
+    }
   } catch (error: any) {
     console.error('[getEmployeeAttendanceWithPhotos] Error:', error)
-    return { data: [], error }
+    return {
+      data: [],
+      attendanceRate: 0,
+      presentDays: 0,
+      lateDays: 0,
+      totalWorkDays: 0,
+      overtimeHours: 0,
+      error,
+    }
   }
 }
 
@@ -1404,7 +1458,14 @@ export async function getEmployeePhotos(userId: string, limit = 20) {
   try {
     const { data, error } = await supabase
       .from('attendance')
-      .select('*')
+      .select(`
+        *,
+        branches:branch_id (
+          id,
+          name,
+          shifts
+        )
+      `)
       .eq('user_id', userId)
       .or('check_in_photo.not.is.null,check_out_photo.not.is.null')
       .order('date', { ascending: false })
@@ -1417,6 +1478,7 @@ export async function getEmployeePhotos(userId: string, limit = 20) {
     return { data: [], error }
   }
 }
+
 
 export async function getApprovedExpenses(branchId?: string) {
   return getExpenses(branchId, 'approved')
@@ -1684,6 +1746,11 @@ export async function reduceOutletStock(outletId: string, serviceId: string, qua
   }
 }
 
-export function subscribeToEvents(callback: any) {
-  return { unsubscribe: () => {} }
+export function subscribeToEvents(callback: (event: string, payload: any) => void) {
+  const channel = supabase
+    .channel('global_events')
+    .on('broadcast', { event: 'transaction_created' }, (payload) => callback('transaction_created', payload))
+    .on('broadcast', { event: 'transaction_deleted' }, (payload) => callback('transaction_deleted', payload))
+    .subscribe()
+  return channel
 }

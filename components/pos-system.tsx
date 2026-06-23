@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -19,7 +19,7 @@ import {
   getBranches,
   type ServiceWithCategory,
   type Branch,
-  type ReceiptTemplateWithBranch,
+  type ReceiptTemplate,
   broadcastTransactionEvent,
   subscribeToEvents,
   reduceOutletStock,
@@ -96,7 +96,7 @@ export function POSSystem() {
   const [branches, setBranches] = useState<Branch[]>([])
   const [employees, setEmployees] = useState<any[]>([])
   const [currentUser, setCurrentUser] = useState<any | null>(null)
-  const [receiptTemplate, setReceiptTemplate] = useState<ReceiptTemplateWithBranch | null>(null)
+  const [receiptTemplate, setReceiptTemplate] = useState<ReceiptTemplate | null>(null)
   const [branchInfo, setBranchInfo] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [isBluetoothOpen, setIsBluetoothOpen] = useState(false)
@@ -310,7 +310,7 @@ export function POSSystem() {
       setBluetoothConnected(true)
 
       setIsBluetoothOpen(false)
-      toast.success("Berhasil Terhubung! 📱", {
+      toast.success("Berhasil Terhubung! ðŸ“±", {
         description: `Terhubung ke printer ${device.name}`,
       })
 
@@ -450,7 +450,7 @@ export function POSSystem() {
       setTimeout(() => {
         win.print()
         win.close()
-        toast.success("Print via Browser 🖨️", { description: "Struk berhasil dicetak menggunakan printer browser", duration: 4000 })
+        toast.success("Print via Browser ðŸ–¨ï¸", { description: "Struk berhasil dicetak menggunakan printer browser", duration: 4000 })
         setIsPrinting(false)
       }, 250)
     } catch (error) {
@@ -611,7 +611,7 @@ export function POSSystem() {
       }
 
       toast.dismiss("bluetooth-print")
-      toast.success("Print via Bluetooth Berhasil! ��🖨️", {
+      toast.success("Print via Bluetooth Berhasil! ï¿½ï¿½ðŸ–¨ï¸", {
         description: `Struk berhasil dicetak ke printer thermal ${bluetoothDevice.name}`,
         duration: 5000,
       })
@@ -628,8 +628,8 @@ export function POSSystem() {
 
   // Filter services: active status, type, and category
   const filteredServices = services.filter(service => {
-    // Must be active
-    if (service.status !== "active") return false;
+    // Must be active (aktif field, or fallback check)
+    if (service.aktif === false) return false;
 
     // Filter by type
     if (selectedType !== "all" && service.type !== selectedType) return false;
@@ -816,7 +816,9 @@ export function POSSystem() {
         branch_id: selectedBranchData.id,
         branch_name: selectedBranchData.name,
         cashier_id: currentUser.id,
-        server_id: servingEmployee, // Karyawan yang melayani pelanggan
+        cashier_name: currentUser.name || currentUser.email || 'Admin',
+        server_id: servingEmployee ? parseInt(servingEmployee) : undefined,
+        server_name: employees.find(e => String(e.id) === String(servingEmployee))?.name || undefined,
         subtotal: getTotalPrice(),
         discount_amount: getDiscountAmount(),
         total_amount: getFinalTotal(),
@@ -830,15 +832,20 @@ export function POSSystem() {
 
       const transactionItemsWithCommission = await Promise.all(
         cart.map(async (item) => {
-          let commissionData = {
+          let commissionData: {
+            commission_status: string
+            commission_type: string | undefined
+            commission_value: number | undefined
+            commission_amount: number
+          } = {
             commission_status: 'no_commission',
-            commission_type: null,
-            commission_value: null,
+            commission_type: undefined,
+            commission_value: undefined,
             commission_amount: 0,
           }
 
           if (item.service.type === 'service') {
-            console.log('🔍 Checking commission for:', {
+            console.log('ðŸ” Checking commission for:', {
               service_id: item.service.id,
               service_name: item.service.name,
               user_id: servingEmployee,
@@ -850,9 +857,10 @@ export function POSSystem() {
               .select('commission_type, commission_value')
               .eq('service_id', item.service.id)
               .eq('user_id', servingEmployee)
-              .single()
+              .limit(1)
+              .maybeSingle()
 
-            console.log('📋 Commission rule result:', { rule, ruleError });
+            console.log('ðŸ“‹ Commission rule result:', { rule, ruleError });
 
             if (rule) {
               const price = item.service.price
@@ -862,15 +870,15 @@ export function POSSystem() {
 
               commissionData = {
                 commission_status: 'credited',
-                commission_type: rule.commission_type as any,
+                commission_type: rule.commission_type ?? undefined,
                 commission_value: Number(rule.commission_value),
                 commission_amount: commissionAmount * item.quantity,
               }
 
-              console.log('✅ Commission applied:', commissionData);
+              console.log('âœ… Commission applied:', commissionData);
             } else {
               commissionData.commission_status = 'pending_rule'
-              console.log('⚠️ No commission rule found - status set to pending_rule');
+              console.log('âš ï¸ No commission rule found - status set to pending_rule');
             }
           }
 
@@ -881,7 +889,7 @@ export function POSSystem() {
             unit_price: item.service.price,
             total_price: item.service.price * item.quantity,
             // Convert barber_id to INTEGER if exists
-            barber_id: item.service.type === 'service' && servingEmployee ? parseInt(servingEmployee) : null,
+            barber_id: item.service.type === 'service' && servingEmployee ? parseInt(servingEmployee) : undefined,
             ...commissionData,
           }
         })
@@ -910,7 +918,7 @@ export function POSSystem() {
         change_amount: paymentMethod === "cash" && cashAmount ? changeAmount : null
       })
 
-      // 🔥 BROADCAST EVENT KE SEMUA KOMPONEN
+      // ðŸ”¥ BROADCAST EVENT KE SEMUA KOMPONEN
       await broadcastTransactionEvent('transaction_created', {
         transaction_id: savedTransaction.id,
         branch_id: selectedBranchData.id,
@@ -930,7 +938,7 @@ export function POSSystem() {
       setChangeAmount(0)
 
       toast.dismiss("checkout-loading")
-      toast.success("Transaksi Berhasil! 🎉", {
+      toast.success("Transaksi Berhasil! ðŸŽ‰", {
         description: `Transaksi #${savedTransaction.receipt_number} berhasil diproses`,
         duration: 5000,
       })
@@ -1022,7 +1030,7 @@ export function POSSystem() {
                   setSelectedCategory("semua")
                 }}
               >
-                💈 Layanan
+                ðŸ’ˆ Layanan
               </Button>
               <Button
                 variant={selectedType === "product" ? "default" : "outline"}
@@ -1032,7 +1040,7 @@ export function POSSystem() {
                   setSelectedCategory("semua")
                 }}
               >
-                📦 Produk
+                ðŸ“¦ Produk
               </Button>
             </div>
 
@@ -1074,82 +1082,96 @@ export function POSSystem() {
                 })}
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4 mt-3 md:mt-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 mt-3 md:mt-4">
               {filteredServices.map((service) => {
                 const categoryName = service.service_categories?.name || "Lainnya"
                 const IconComponent = categoryIcons[categoryName as keyof typeof categoryIcons] || Scissors
                 const branch = branches.find(b => b.name === selectedBranch);
                 const stockItem = branch ? outletStock.find(os => os.service_id === service.id && os.outlet_id === branch.id) : null;
-                const availableStock = stockItem?.stock_quantity || 0;
+                const availableStock = stockItem?.stock_quantity ?? (service.type === "product" ? (service.stock ?? 0) : 999);
                 const minStock = stockItem?.min_stock_threshold || 5;
+                const isOutOfStock = service.type === "product" && availableStock <= 0;
 
                 return (
-                  <Card
+                  <div
                     key={service.id}
-                    className={`min-h-[140px] md:min-h-[180px] flex flex-col hover:shadow-lg transition-shadow cursor-pointer border-2 hover:border-primary/20 ${service.type === "product" && availableStock <= 0 ? "opacity-50 cursor-not-allowed" : ""}`}
-                    onClick={() => {
-                      if (service.type === "product" && availableStock <= 0) return
-                      addToCart(service)
-                    }}
+                    className={`group relative flex flex-col rounded-xl overflow-hidden border bg-white shadow-sm transition-all duration-200
+                      ${isOutOfStock
+                        ? "opacity-60 cursor-not-allowed"
+                        : "cursor-pointer hover:shadow-md hover:-translate-y-0.5 hover:border-red-300"
+                      }`}
+                    onClick={() => { if (!isOutOfStock) addToCart(service) }}
                   >
-                    <CardHeader className="p-3 md:p-4 pb-2">
-                      <div className="flex items-start gap-2">
-                        {service.image_url ? (
-                          <img
-                            src={service.image_url}
-                            alt={service.name}
-                            className="w-10 h-10 md:w-12 md:h-12 rounded-lg object-cover flex-shrink-0 border"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none'
-                              e.currentTarget.nextElementSibling?.classList.remove('hidden')
-                            }}
-                          />
+                    {/* â”€â”€ Image â”€â”€ */}
+                    <div className="relative w-full bg-gray-100 overflow-hidden" style={{ paddingBottom: '75%' }}>
+                      {service.image_url ? (
+                        <img
+                          src={service.image_url}
+                          alt={service.name}
+                          className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+                          <IconComponent className="h-10 w-10 text-gray-300" />
+                        </div>
+                      )}
+
+                      {/* Category badge */}
+                      <div className="absolute top-2 left-2">
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide
+                          ${service.type === "product" ? "bg-orange-500 text-white" : "bg-blue-500 text-white"}`}>
+                          {service.type === "product" ? "Produk" : "Layanan"}
+                        </span>
+                      </div>
+
+                      {/* Stock badge */}
+                      {service.type === "product" && (
+                        <div className={`absolute top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full
+                          ${isOutOfStock ? "bg-red-500 text-white" : availableStock <= minStock ? "bg-orange-400 text-white" : "bg-green-500 text-white"}`}>
+                          {isOutOfStock ? "Habis" : `Stok ${availableStock}`}
+                        </div>
+                      )}
+
+                      {/* Overlay gradient bottom */}
+                      <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-black/20 to-transparent" />
+                    </div>
+
+                    {/* â”€â”€ Info â”€â”€ */}
+                    <div className="flex flex-col p-2.5 gap-1 flex-1">
+                      <h3 className="text-xs font-bold text-gray-800 leading-tight line-clamp-2 uppercase tracking-wide">
+                        {service.name}
+                      </h3>
+                      {service.description && (
+                        <p className="text-[10px] text-gray-400 line-clamp-1">{service.description}</p>
+                      )}
+
+                      <div className="mt-auto pt-1.5 flex items-center justify-between gap-1">
+                        <span className="text-sm font-extrabold text-red-600 leading-none">
+                          {formatPrice(service.price)}
+                        </span>
+                        {service.duration ? (
+                          <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                            <Clock className="h-2.5 w-2.5" />{service.duration}m
+                          </span>
                         ) : null}
-                        <div className={`w-10 h-10 md:w-12 md:h-12 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0 ${service.image_url ? 'hidden' : ''}`}>
-                          <IconComponent className="h-4 w-4 md:h-5 md:w-5 text-primary" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <CardTitle className="text-xs md:text-base font-semibold truncate">{service.name}</CardTitle>
-                          <CardDescription className="text-[10px] md:text-xs line-clamp-1">{service.description}</CardDescription>
-                        </div>
                       </div>
-                    </CardHeader>
-                    <CardContent className="p-3 md:p-4 pt-0 mt-auto">
-                      <div className="space-y-2">
-                        <p className="text-base md:text-xl font-bold text-primary truncate">{formatPrice(service.price)}</p>
-                        <div className="flex flex-wrap items-center gap-1.5 md:gap-2 text-[10px] md:text-xs text-muted-foreground">
-                          {service.duration && (
-                            <div className="flex items-center gap-1">
-                              <Clock className="h-3 w-3 flex-shrink-0" />
-                              <span className="whitespace-nowrap">{service.duration}m</span>
-                            </div>
-                          )}
-                          {service.type === "product" && (
-                            <div className={`flex items-center gap-1 ${availableStock <= 0 ? "text-red-500" : availableStock <= minStock ? "text-orange-500" : "text-green-600"}`}>
-                              <Package className="h-3 w-3 flex-shrink-0" />
-                              <span className="whitespace-nowrap">{availableStock <= 0 ? "Habis" : `${availableStock}`}</span>
-                              {availableStock <= minStock && availableStock > 0 && (
-                                <AlertTriangle className="h-3 w-3 flex-shrink-0" />
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        <Button
-                          size="sm"
-                          className="w-full gap-1 text-xs h-8"
-                          disabled={service.type === "product" && availableStock <= 0}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            if (service.type === "product" && availableStock <= 0) return
-                            addToCart(service)
-                          }}
-                        >
-                          <Plus className="h-3 w-3" />
-                          <span className="truncate">{service.type === "product" && availableStock <= 0 ? "Habis" : "Tambah"}</span>
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
+
+                      <button
+                        disabled={isOutOfStock}
+                        onClick={(e) => { e.stopPropagation(); if (!isOutOfStock) addToCart(service) }}
+                        className={`mt-1 w-full h-8 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors
+                          ${isOutOfStock
+                            ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                            : "bg-red-600 hover:bg-red-700 text-white"}`}
+                      >
+                        {isOutOfStock ? (
+                          <span>Habis</span>
+                        ) : (
+                          <><Plus className="h-3.5 w-3.5" /><span>Tambah</span></>
+                        )}
+                      </button>
+                    </div>
+                  </div>
                 )
               })}
             </div>
@@ -1183,7 +1205,7 @@ export function POSSystem() {
               <ShoppingCart className="h-5 w-5" /> Keranjang
             </DialogTitle>
             <DialogDescription>
-              {cart.length} item{cart.length !== 1 ? "s" : ""} • {getTotalDuration()} menit
+              {cart.length} item{cart.length !== 1 ? "s" : ""} â€¢ {getTotalDuration()} menit
             </DialogDescription>
           </DialogHeader>
 
@@ -1292,7 +1314,7 @@ export function POSSystem() {
                             <span className="text-xs text-gray-500">Stok: {availableStock}</span>
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground">{formatPrice(item.service.price)} × {item.quantity}</p>
+                        <p className="text-xs text-muted-foreground">{formatPrice(item.service.price)} Ã— {item.quantity}</p>
                         {isOutOfStock && (
                           <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
                             <AlertTriangle className="h-3 w-3" /> Stok habis!

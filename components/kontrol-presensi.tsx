@@ -13,7 +13,17 @@ import { format } from "date-fns"
 import { id } from "date-fns/locale"
 import { toast } from "@/hooks/use-toast"
 import { supabase, getEmployeeAttendanceWithPhotos, getEmployeePhotos } from "@/lib/supabase"
-import type { Employee, Attendance, AttendanceWithDetails } from "@/lib/supabase"
+import type { User, Attendance } from "@/lib/supabase"
+
+// Alias untuk konsistensi kode lama — ditambah field avatar
+type Employee = User & { avatar?: string }
+
+// Extended Attendance dengan relasi branches
+interface AttendanceWithDetails extends Attendance {
+  branches?: { id?: string; name: string; shifts?: any } | null
+  shift_type: string
+  status: string
+}
 
 interface KontrolPresensiProps {
   employees: Employee[]
@@ -427,7 +437,7 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
                                 <AvatarFallback className="bg-red-600 text-white text-lg font-bold">
                                   {employee.name
                                     .split(" ")
-                                    .map((n) => n[0])
+                                    .map((n: string) => n[0])
                                     .join("")}
                                 </AvatarFallback>
                               </Avatar>
@@ -535,63 +545,105 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
                                     <span>Lihat Semua</span>
                                   </Button>
                                 </DialogTrigger>
-                                <DialogContent className="max-w-[95vw] md:max-w-6xl max-h-[90vh] overflow-y-auto">
-                                  <DialogHeader className="pb-4">
-                                    <DialogTitle className="text-xl font-bold text-gray-900">
-                                      📸 Foto Presensi - {employee.name}
+                                <DialogContent className="w-[98vw] max-w-[98vw] h-[92vh] max-h-[92vh] overflow-hidden flex flex-col p-0 rounded-2xl">
+                                  <DialogHeader className="pb-4 bg-gradient-to-r from-red-600 to-orange-600 text-white px-6 py-5 flex-shrink-0">
+                                    <DialogTitle className="text-2xl font-bold text-white flex items-center gap-3">
+                                      <Camera className="h-6 w-6" />
+                                      📸 Foto Presensi — {employee.name}
                                     </DialogTitle>
+                                    <DialogDescription className="text-red-100 text-sm mt-1">Riwayat foto check-in dan check-out karyawan</DialogDescription>
                                   </DialogHeader>
-                                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                  <div className="flex-1 overflow-y-auto p-6">
+                                  {employeePhotos.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-full py-20 text-center">
+                                      <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                                        <Camera className="h-12 w-12 text-gray-400" />
+                                      </div>
+                                      <p className="text-xl font-bold text-gray-700 mb-2">Belum ada foto presensi</p>
+                                      <p className="text-gray-500">Foto akan muncul setelah karyawan melakukan check-in</p>
+                                    </div>
+                                  ) : (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                                     {employeePhotos.map((record, photoIndex) => (
                                       <div 
                                         key={record.id} 
-                                        className="space-y-3 hover:shadow-md transition-shadow"
+                                        className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300"
                                       >
-                                        <div className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
-                                          {record.check_in_photo && (
-                                            <img
-                                              src={record.check_in_photo || "/placeholder.svg"}
-                                              alt={`Check-in ${format(new Date(record.date), "dd/MM/yyyy", { locale: id })}`}
-                                              className="w-full h-full object-cover"
-                                            />
-                                          )}
-                                          {!record.check_in_photo && record.check_out_photo && (
-                                            <img
-                                              src={record.check_out_photo || "/placeholder.svg"}
-                                              alt={`Check-out ${format(new Date(record.date), "dd/MM/yyyy", { locale: id })}`}
-                                              className="w-full h-full object-cover"
-                                            />
-                                          )}
+                                        {/* Foto Section */}
+                                        <div className="grid grid-cols-2 gap-0">
+                                          {/* Foto Check-in */}
+                                          <div className="relative aspect-square bg-gray-100">
+                                            {record.check_in_photo ? (
+                                              <img
+                                                src={record.check_in_photo}
+                                                alt={`Check-in`}
+                                                className="w-full h-full object-cover"
+                                              />
+                                            ) : (
+                                              <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50">
+                                                <Camera className="h-8 w-8 text-gray-300" />
+                                                <span className="text-xs text-gray-400 mt-1">No photo</span>
+                                              </div>
+                                            )}
+                                            <div className="absolute bottom-0 left-0 right-0 bg-green-600/80 text-white text-xs font-bold text-center py-0.5">
+                                              MASUK
+                                            </div>
+                                          </div>
+                                          {/* Foto Check-out */}
+                                          <div className="relative aspect-square bg-gray-100">
+                                            {record.check_out_photo ? (
+                                              <img
+                                                src={record.check_out_photo}
+                                                alt={`Check-out`}
+                                                className="w-full h-full object-cover"
+                                              />
+                                            ) : (
+                                              <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50">
+                                                <Camera className="h-8 w-8 text-gray-300" />
+                                                <span className="text-xs text-gray-400 mt-1">No photo</span>
+                                              </div>
+                                            )}
+                                            <div className="absolute bottom-0 left-0 right-0 bg-blue-600/80 text-white text-xs font-bold text-center py-0.5">
+                                              KELUAR
+                                            </div>
+                                          </div>
                                         </div>
-                                        <div className="space-y-2 bg-white p-3 rounded-lg border border-gray-200">
-                                          <p className="font-bold text-lg text-gray-800">
-                                            {format(new Date(record.date), "dd MMM yyyy", { locale: id })}
+
+                                        {/* Info Section */}
+                                        <div className="p-4 space-y-2">
+                                          <p className="font-bold text-base text-gray-800">
+                                            {format(new Date(record.date), "EEEE, dd MMM yyyy", { locale: id })}
                                           </p>
-                                          <p className="text-gray-600 flex items-center gap-2">
-                                            <MapPin className="h-4 w-4" />
-                                            {record.branches?.name} • {formatShiftTime(record.shift_type)}
-                                          </p>
-                                          <div className="flex items-center gap-2">
+                                          <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                                            <MapPin className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                                            <span className="truncate">{record.branches?.name || 'Cabang tidak diketahui'}</span>
+                                          </div>
+                                          <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                                            <Clock className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
+                                            <span>{record.shift_type ? formatShiftTime(record.shift_type) : 'Shift tidak diset'}</span>
+                                          </div>
+                                          <div className="flex items-center justify-between pt-1">
                                             {getStatusBadge(record.status)}
                                           </div>
-                                          {record.check_in_time && (
-                                            <p className="text-sm text-gray-600 font-medium">
-                                              🔸 Masuk: {formatTime(record.check_in_time)}
-                                            </p>
-                                          )}
-                                          {record.check_out_time && (
-                                            <p className="text-sm text-gray-600 font-medium">
-                                              🔹 Keluar: {formatTime(record.check_out_time)}
-                                            </p>
-                                          )}
-                                          {record.total_hours && (
-                                            <p className="text-sm text-gray-600 font-medium">
-                                              ⏱️ Total: {record.total_hours.toFixed(1)} jam
-                                            </p>
-                                          )}
+                                          <div className="grid grid-cols-3 gap-1 text-xs text-center pt-1">
+                                            <div className="bg-green-50 rounded-lg p-1.5">
+                                              <p className="text-gray-500">Masuk</p>
+                                              <p className="font-bold text-green-700">{formatTime(record.check_in_time) || '-'}</p>
+                                            </div>
+                                            <div className="bg-blue-50 rounded-lg p-1.5">
+                                              <p className="text-gray-500">Keluar</p>
+                                              <p className="font-bold text-blue-700">{formatTime(record.check_out_time) || '-'}</p>
+                                            </div>
+                                            <div className="bg-orange-50 rounded-lg p-1.5">
+                                              <p className="text-gray-500">Total</p>
+                                              <p className="font-bold text-orange-700">{record.total_hours ? `${record.total_hours.toFixed(1)}j` : '-'}</p>
+                                            </div>
+                                          </div>
                                         </div>
                                       </div>
                                     ))}
+                                  </div>
+                                  )}
                                   </div>
                                 </DialogContent>
                               </Dialog>
@@ -644,21 +696,22 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
         </Card>
 
         {/* Photo Manager Modal */}
-        <Dialog open={isPhotoManagerOpen} onOpenChange={handleClosePhotoManager}>
-          <DialogContent className="max-w-[95vw] md:max-w-6xl lg:max-w-7xl max-h-[95vh] overflow-y-auto rounded-2xl md:rounded-3xl border-0 bg-white/95 backdrop-blur-xl shadow-2xl">
-            <DialogHeader className="pb-4 md:pb-8 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-t-2xl md:rounded-t-3xl -mt-6 -mx-6 px-4 md:px-8 py-4 md:py-6">
-              <DialogTitle className="text-lg md:text-2xl lg:text-3xl font-bold flex items-center gap-2 md:gap-3">
-                <div className="p-1.5 md:p-2 bg-white/20 rounded-lg md:rounded-xl backdrop-blur-sm">
-                  <Settings className="h-5 w-5 md:h-6 lg:h-8 md:w-6 lg:w-8" />
+        <Dialog open={isPhotoManagerOpen} onOpenChange={handleClosePhotoManager} modal={true}>
+          <DialogContent className="w-[98vw] max-w-[98vw] h-[96vh] max-h-[96vh] overflow-hidden flex flex-col rounded-2xl border-0 bg-white/95 backdrop-blur-xl shadow-2xl p-0">
+            <DialogHeader className="bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-t-2xl px-6 py-5 flex-shrink-0">
+              <DialogTitle className="text-xl md:text-2xl lg:text-3xl font-bold flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
+                  <Settings className="h-5 w-5 md:h-6 md:w-6 lg:h-7 lg:w-7" />
                 </div>
-                <span className="truncate">Manajemen Foto - {selectedEmployeeName}</span>
+                <span className="truncate">Manajemen Foto — {selectedEmployeeName}</span>
               </DialogTitle>
-              <DialogDescription className="text-red-100 text-xs md:text-sm lg:text-lg line-clamp-2">
-                🎯 Kelola foto presensi karyawan - hapus foto individual atau dalam jumlah banyak
+              <DialogDescription className="text-red-100 text-sm mt-1">
+                🎯 Kelola foto presensi karyawan — hapus foto individual atau dalam jumlah banyak
               </DialogDescription>
             </DialogHeader>
             
-            <div className="space-y-4 md:space-y-8 p-3 md:p-6">
+            <div className="flex-1 overflow-y-auto">
+            <div className="space-y-4 md:space-y-6 p-4 md:p-6">
               {/* Enhanced Controls */}
               <div className="bg-gradient-to-r from-red-50 to-orange-50 rounded-xl md:rounded-2xl p-3 md:p-6 border border-red-200/50">
                 <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 md:gap-6">
@@ -815,28 +868,30 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
                 </div>
               )}
             </div>
+            </div>
           </DialogContent>
         </Dialog>
 
         {/* Enhanced Photo Preview Modal */}
         {previewPhoto && (
           <Dialog open={!!previewPhoto} onOpenChange={() => setPreviewPhoto(null)}>
-            <DialogContent className="max-w-6xl rounded-3xl border-0 bg-white/95 backdrop-blur-xl shadow-2xl">
-              <DialogHeader className="pb-6">
-                <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-red-600 to-orange-600 bg-clip-text text-transparent">
-                  🖼️ Preview Foto - {format(new Date(previewPhoto.date), 'dd MMM yyyy', { locale: id })}
+            <DialogContent className="w-[95vw] max-w-[95vw] h-[90vh] max-h-[90vh] overflow-hidden flex flex-col rounded-3xl border-0 bg-white/95 backdrop-blur-xl shadow-2xl p-0">
+              <DialogHeader className="bg-gradient-to-r from-red-600 to-orange-600 px-6 py-5 rounded-t-3xl flex-shrink-0">
+                <DialogTitle className="text-2xl font-bold text-white">
+                  🖼️ Preview Foto — {format(new Date(previewPhoto.date), 'dd MMM yyyy', { locale: id })}
                 </DialogTitle>
-                <DialogDescription className="text-lg text-gray-600">
-                  {previewPhoto.photoType === 'check_in' ? '🔸 Foto Check-in' : '🔹 Foto Check-out'} - {formatTime(previewPhoto.time)}
+                <DialogDescription className="text-red-100 text-sm mt-1">
+                  {previewPhoto.photoType === 'check_in' ? '🔸 Foto Check-in' : '🔹 Foto Check-out'} — {formatTime(previewPhoto.time)}
                 </DialogDescription>
               </DialogHeader>
               
-              <div className="space-y-8">
-                <div className="flex justify-center bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-6">
+              <div className="flex-1 overflow-y-auto">
+              <div className="space-y-6 p-6">
+                <div className="flex justify-center bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-4">
                   <img 
                     src={previewPhoto.photoUrl} 
                     alt="Preview"
-                    className="max-w-full max-h-[60vh] object-contain rounded-xl shadow-2xl"
+                    className="max-w-full max-h-[55vh] object-contain rounded-xl shadow-2xl"
                   />
                 </div>
                 
@@ -883,6 +938,7 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
                     </div>
                   </div>
                 </div>
+              </div>
               </div>
             </DialogContent>
           </Dialog>

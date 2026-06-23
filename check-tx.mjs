@@ -1,0 +1,10 @@
+import postgres from 'postgres';
+import { readFileSync } from 'fs';
+const env = Object.fromEntries(readFileSync('.env','utf-8').split('\n').filter(l=>l.includes('=')&&!l.startsWith('#')).map(l=>{const[k,...v]=l.split('=');return[k.trim(),v.join('=').trim().replace(/^["']|["']$/g,'')]}));
+const sql = postgres(env.DATABASE_URL,{ssl:'require'});
+const cols = await sql`SELECT column_name FROM information_schema.columns WHERE table_name='transactions' ORDER BY ordinal_position`;
+console.log('transactions columns:', cols.map(c=>c.column_name).join(', '));
+const last = await sql`SELECT id, cashier_name, server_name, customer_name FROM transactions ORDER BY created_at DESC LIMIT 3`;
+console.log('\nLast 3 transactions:');
+last.forEach(t=>console.log(` id=${t.id} cashier=${t.cashier_name} server=${t.server_name} customer=${t.customer_name}`));
+await sql.end();

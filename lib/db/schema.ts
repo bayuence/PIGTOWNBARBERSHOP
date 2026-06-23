@@ -56,6 +56,7 @@ export const services = pgTable('services', {
   type: text('type').notNull().default('service'), // service, product
   stock: integer('stock').default(0),
   status: text('status').notNull().default('active'), // active, inactive
+  imageUrl: text('image_url'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
