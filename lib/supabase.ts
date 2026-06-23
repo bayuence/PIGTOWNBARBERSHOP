@@ -53,6 +53,9 @@ export interface User {
   pin?: string
   salary?: number
   commission_rate?: number
+  current_absent_days?: number
+  max_absent_days?: number
+  rating?: number
   created_at: string
 }
 
@@ -237,6 +240,21 @@ export interface OutletStock {
   min_stock_threshold: number
   service?: { name: string; type?: string } | null
   branch?: { name: string } | null
+}
+
+export interface Employee extends User {
+  avatar_url?: string
+}
+
+export interface EmployeeStats {
+  totalTransactions: number
+  totalRevenue: number
+  totalCommission: number
+  averageTransaction: number
+  bonusPoints: number
+  penaltyPoints: number
+  totalBonus: number
+  totalPenalty: number
 }
 
 // =============================

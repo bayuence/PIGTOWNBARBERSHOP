@@ -110,6 +110,47 @@ export function KontrolGaji({
   const [servicesLoading, setServicesLoading] = useState(true);
 
   const [showSlipModal, setShowSlipModal] = useState(false);
+  const [employeeDetailedCommissions, setEmployeeDetailedCommissions] = useState<any[]>([]);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+
+  const fetchDetailedCommissions = useCallback(async (employeeId: string) => {
+    setLoadingDetails(true);
+    try {
+      const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+      const queryId = !isNaN(Number(employeeId)) ? Number(employeeId) : employeeId;
+      const { data, error } = await supabase
+        .from('transaction_items')
+        .select(`
+          *,
+          transactions:transaction_id (
+            branch_name,
+            branch_id
+          )
+        `)
+        .eq('barber_id', queryId)
+        .gte('created_at', startOfMonth);
+
+      if (error) throw error;
+      setEmployeeDetailedCommissions(data || []);
+    } catch (err) {
+      console.error('❌ Error fetching detailed commissions:', err);
+      toast({
+        title: "Gagal memuat detail komisi",
+        description: (err as Error).message,
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingDetails(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    if ((showSlipModal || isKelolaGajiOpen) && selectedEmployee) {
+      fetchDetailedCommissions(selectedEmployee.id);
+    } else {
+      setEmployeeDetailedCommissions([]);
+    }
+  }, [showSlipModal, isKelolaGajiOpen, selectedEmployee, employees, fetchDetailedCommissions]);
 
   // Fungsi untuk mengambil data bonus dan penalty
   const fetchBonusPenaltyData = useCallback(async () => {
@@ -461,7 +502,17 @@ export function KontrolGaji({
     }
   };
 
-  const getEarnedCommission = (employeeId: string) => earnedCommissions[employeeId] || 0;
+  const getEarnedCommission = (employeeId: string) => {
+    if (selectedEmployee && employeeId === selectedEmployee.id) {
+      const branchTotal = Object.values(aggregatedCommissionsByBranch).reduce((total, items) => {
+        return total + items.reduce((sum, item) => sum + item.totalCommission, 0);
+      }, 0);
+      if (branchTotal > 0 || employeeDetailedCommissions.length > 0) {
+        return branchTotal;
+      }
+    }
+    return earnedCommissions[employeeId] || 0;
+  };
 
   const getBonusPenaltyData = (employeeId: string) => bonusPenaltyData[employeeId] || { bonus: 0, penalty: 0 };
 
@@ -487,14 +538,63 @@ export function KontrolGaji({
     if (!selectedEmployee) return;
     const bonusData = getBonusPenaltyData(selectedEmployee.id);
     
+    // Generate detailed commission tables HTML per branch
+    let commissionTablesHtml = '';
+    if (Object.keys(aggregatedCommissionsByBranch).length > 0) {
+      commissionTablesHtml = `
+        <div class="section">
+          <h3>RINCIAN KOMISI PER CABANG</h3>
+      `;
+      
+      Object.entries(aggregatedCommissionsByBranch).forEach(([branchName, items]) => {
+        const branchTotal = items.reduce((sum, item) => sum + item.totalCommission, 0);
+        commissionTablesHtml += `
+          <div style="margin-top: 15px; margin-bottom: 20px; page-break-inside: avoid;">
+            <div style="font-weight: bold; font-size: 14px; margin-bottom: 8px; border-bottom: 1px dashed #666; padding-bottom: 4px; display: flex; justify-content: space-between;">
+              <span>Cabang: ${branchName}</span>
+              <span>Total Komisi: Rp ${formatNominal(branchTotal)}</span>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; margin-bottom: 10px;">
+              <thead>
+                <tr style="background-color: #f2f2f2; border-bottom: 1px solid #ccc;">
+                  <th style="padding: 6px 8px; border: 1px solid #ddd;">Nama Menu</th>
+                  <th style="padding: 6px 8px; text-align: center; width: 60px; border: 1px solid #ddd;">Jumlah</th>
+                  <th style="padding: 6px 8px; text-align: right; width: 120px; border: 1px solid #ddd;">Komisi / Transaksi</th>
+                  <th style="padding: 6px 8px; text-align: right; width: 120px; border: 1px solid #ddd;">Total Komisi</th>
+                </tr>
+              </thead>
+              <tbody>
+        `;
+        
+        items.forEach(item => {
+          commissionTablesHtml += `
+            <tr style="border-bottom: 1px solid #eee;">
+              <td style="padding: 6px 8px; border: 1px solid #ddd;">${item.serviceName}</td>
+              <td style="padding: 6px 8px; text-align: center; border: 1px solid #ddd;">${item.quantity}</td>
+              <td style="padding: 6px 8px; text-align: right; border: 1px solid #ddd;">Rp ${formatNominal(item.unitCommission)}</td>
+              <td style="padding: 6px 8px; text-align: right; font-weight: bold; border: 1px solid #ddd;">Rp ${formatNominal(item.totalCommission)}</td>
+            </tr>
+          `;
+        });
+        
+        commissionTablesHtml += `
+              </tbody>
+            </table>
+          </div>
+        `;
+      });
+      
+      commissionTablesHtml += `</div>`;
+    }
+    
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
     const printContent = `
       <!DOCTYPE html><html><head><title>Slip Gaji - ${selectedEmployee.name}</title>
       <style>
-          body { font-family: Arial, sans-serif; margin: 20px; } .header { text-align: center; margin-bottom: 30px; }
+          body { font-family: Arial, sans-serif; margin: 20px; color: #333; } .header { text-align: center; margin-bottom: 30px; }
           .info { display: flex; justify-content: space-between; margin-bottom: 20px; } .section { margin: 20px 0; }
-          .section h3 { border-bottom: 2px solid #333; padding-bottom: 5px; } .item { display: flex; justify-content: space-between; margin: 5px 0; }
+          .section h3 { border-bottom: 2px solid #333; padding-bottom: 5px; margin-bottom: 10px; font-size: 16px; } .item { display: flex; justify-content: space-between; margin: 5px 0; }
           .total { border-top: 2px solid #333; margin-top: 20px; padding-top: 10px; font-weight: bold; font-size: 18px; }
       </style></head><body>
       <div class="header"><h1>SLIP GAJI</h1><p>PT. Barbershop Indonesia</p></div>
@@ -504,6 +604,9 @@ export function KontrolGaji({
           <div class="item"><span>Komisi Didapat</span><span>Rp ${formatNominal(getEarnedCommission(selectedEmployee.id))}</span></div>
           <div class="item"><span>Bonus</span><span>Rp ${formatNominal(bonusData.bonus)}</span></div>
       </div>
+      
+      ${commissionTablesHtml}
+      
       <div class="section"><h3>POTONGAN</h3>
           <div class="item"><span>Denda/Penalti</span><span>Rp ${formatNominal(bonusData.penalty)}</span></div>
       </div>
@@ -519,6 +622,71 @@ export function KontrolGaji({
     const assignedServiceIds = new Set(selectedEmployee.commissions?.map(c => c.service_id));
     return services.filter(s => !assignedServiceIds.has(s.id));
   }, [services, selectedEmployee]);
+
+  const aggregatedCommissionsByBranch = useMemo(() => {
+    const branchesMap: { [branchName: string]: any[] } = {};
+
+    employeeDetailedCommissions.forEach(item => {
+      const branchName = item.transactions?.branch_name || selectedEmployee?.branch || "Tidak Ada Cabang";
+      
+      let sName = item.service_name;
+      if (!sName) {
+        const foundService = services.find(s => String(s.id) === String(item.service_id));
+        sName = foundService?.name || `Layanan ID: ${item.service_id}`;
+      }
+
+      const qty = Number(item.quantity) || 0;
+      let totalComm = Number(item.commission_amount) || 0;
+      let unitComm = qty > 0 ? (totalComm / qty) : 0;
+      let commType = item.commission_type;
+      let commValue = item.commission_value;
+
+      // Fallback: If commission_amount is 0 or commission details are empty, calculate it dynamically using active rules
+      if (totalComm === 0 || !commType) {
+        const matchingRule = selectedEmployee?.commissions?.find(
+          c => String(c.service_id) === String(item.service_id)
+        );
+        if (matchingRule) {
+          commType = matchingRule.commission_type;
+          commValue = matchingRule.commission_value;
+          
+          const unitPrice = Number(item.unit_price) || 0;
+          const calculatedUnitComm = commType === 'percentage'
+            ? (commValue / 100) * unitPrice
+            : commValue;
+          
+          unitComm = calculatedUnitComm;
+          totalComm = unitComm * qty;
+        }
+      }
+
+      const key = `${item.service_id}_${unitComm}`;
+
+      if (!branchesMap[branchName]) {
+        branchesMap[branchName] = [];
+      }
+
+      const existing = branchesMap[branchName].find((x: any) => x.key === key);
+      if (existing) {
+        existing.quantity += qty;
+        existing.totalCommission += totalComm;
+      } else {
+        branchesMap[branchName].push({
+          key,
+          serviceId: item.service_id,
+          serviceName: sName,
+          unitCommission: unitComm,
+          quantity: qty,
+          totalCommission: totalComm,
+          commissionType: commType,
+          commissionValue: commValue,
+          unitPrice: Number(item.unit_price) || 0
+        });
+      }
+    });
+
+    return branchesMap;
+  }, [employeeDetailedCommissions, selectedEmployee, services]);
 
   const filteredEmployees = useMemo(() => {
     if (propEmployees && propEmployees.length > 0) {
@@ -783,6 +951,54 @@ export function KontrolGaji({
                   </div>
                 </div>
 
+                {/* Rincian Komisi per Cabang */}
+                {loadingDetails ? (
+                  <div className="flex flex-col items-center justify-center py-6 bg-white border border-gray-100 rounded-xl shadow-sm text-sm text-gray-500 gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin text-red-600" />
+                    <span>Memuat rincian komisi per cabang...</span>
+                  </div>
+                ) : Object.keys(aggregatedCommissionsByBranch).length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 px-1">
+                      <TrendingUp className="h-4 w-4 text-red-600" />
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Rincian Komisi per Cabang</span>
+                    </div>
+                    {Object.entries(aggregatedCommissionsByBranch).map(([branchName, items]) => {
+                      const branchTotal = items.reduce((sum, item) => sum + item.totalCommission, 0);
+                      return (
+                        <div key={branchName} className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                          <div className="bg-slate-100/80 px-4 py-2 border-b border-gray-200 flex justify-between items-center">
+                            <span className="font-bold text-xs text-gray-700">{branchName}</span>
+                            <span className="font-extrabold text-xs text-red-600">Total: Rp {formatNominal(branchTotal)}</span>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs">
+                              <thead className="bg-slate-50 text-gray-500 uppercase font-semibold border-b border-gray-100">
+                                <tr>
+                                  <th className="px-4 py-1.5">Nama Menu</th>
+                                  <th className="px-2 py-1.5 text-center">Qty</th>
+                                  <th className="px-2 py-1.5 text-right">Komisi</th>
+                                  <th className="px-4 py-1.5 text-right">Total</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-50">
+                                {items.map((item) => (
+                                  <tr key={item.key} className="hover:bg-slate-50/50">
+                                    <td className="px-4 py-1.5 font-medium text-gray-800">{item.serviceName}</td>
+                                    <td className="px-2 py-1.5 text-center text-gray-600">{item.quantity}</td>
+                                    <td className="px-2 py-1.5 text-right text-gray-600">Rp {formatNominal(item.unitCommission)}</td>
+                                    <td className="px-4 py-1.5 text-right font-semibold text-gray-800">Rp {formatNominal(item.totalCommission)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+
                 {/* Update salary form */}
                 <div className="space-y-3">
                   <Label htmlFor="salary" className="text-sm font-semibold text-gray-700">
@@ -965,6 +1181,54 @@ export function KontrolGaji({
                     </div>
                   </div>
                 </div>
+
+                {/* Rincian Komisi per Cabang */}
+                {loadingDetails ? (
+                  <div className="flex flex-col items-center justify-center py-6 bg-white border border-gray-100 rounded-xl shadow-sm text-sm text-gray-500 gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin text-red-600" />
+                    <span>Memuat rincian komisi per cabang...</span>
+                  </div>
+                ) : Object.keys(aggregatedCommissionsByBranch).length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 px-1">
+                      <TrendingUp className="h-4 w-4 text-red-600" />
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Rincian Komisi per Cabang</span>
+                    </div>
+                    {Object.entries(aggregatedCommissionsByBranch).map(([branchName, items]) => {
+                      const branchTotal = items.reduce((sum, item) => sum + item.totalCommission, 0);
+                      return (
+                        <div key={branchName} className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                          <div className="bg-slate-100/80 px-4 py-2.5 border-b border-gray-200 flex justify-between items-center">
+                            <span className="font-bold text-xs text-gray-700">{branchName}</span>
+                            <span className="font-extrabold text-xs text-red-600">Total: Rp {formatNominal(branchTotal)}</span>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs">
+                              <thead className="bg-slate-50 text-gray-500 uppercase font-semibold border-b border-gray-100">
+                                <tr>
+                                  <th className="px-4 py-2">Nama Menu</th>
+                                  <th className="px-2 py-2 text-center">Qty</th>
+                                  <th className="px-2 py-2 text-right">Komisi</th>
+                                  <th className="px-4 py-2 text-right">Total</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-50">
+                                {items.map((item) => (
+                                  <tr key={item.key} className="hover:bg-slate-50/50">
+                                    <td className="px-4 py-2 font-medium text-gray-800">{item.serviceName}</td>
+                                    <td className="px-2 py-2 text-center text-gray-600">{item.quantity}</td>
+                                    <td className="px-2 py-2 text-right text-gray-600">Rp {formatNominal(item.unitCommission)}</td>
+                                    <td className="px-4 py-2 text-right font-semibold text-gray-800">Rp {formatNominal(item.totalCommission)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
 
                 {/* Potongan */}
                 <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
