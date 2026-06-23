@@ -74,6 +74,7 @@ export interface Service {
   name: string
   description?: string
   price: number
+  cost_price?: number
   duration?: number
   category_id?: string
   type?: string
@@ -131,6 +132,7 @@ export interface TransactionItem {
   service_category?: string
   quantity: number
   unit_price: number
+  cost_price?: number
   total_price: number
   commission_status?: string
   commission_type?: 'percentage' | 'fixed'

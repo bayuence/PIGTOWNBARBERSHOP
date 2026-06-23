@@ -851,6 +851,7 @@ export function ComprehensiveReports() {
 
           // 3. Get commissions - try commission_items or transaction_items (table may not exist)
           let totalCommissions = 0
+          const branchTxIds = transactions?.map(t => t.id) || []
           try {
             const { data: commissions, error: commError } = await supabase
               .from("commission_items")
@@ -861,14 +862,12 @@ export function ComprehensiveReports() {
 
             if (!commError && commissions) {
               totalCommissions = commissions.reduce((sum, c) => sum + (c.commission_amount || 0), 0)
-            } else {
+            } else if (branchTxIds.length > 0) {
               // Try transaction_items commissions fallback
               const { data: txItems } = await supabase
                 .from("transaction_items")
                 .select("commission_amount")
-                .eq("branch_id", branch.id)
-                .gte("created_at", start)
-                .lte("created_at", end)
+                .in("transaction_id", branchTxIds)
               if (txItems) {
                 totalCommissions = txItems.reduce((sum, c) => sum + (c.commission_amount || 0), 0)
               }
@@ -876,6 +875,26 @@ export function ComprehensiveReports() {
           } catch (e) {
             // commissions table may not exist
             totalCommissions = 0
+          }
+
+          // 3.5. Get product cost price (harga modal) for product sales
+          let totalProductCost = 0
+          try {
+            if (branchTxIds.length > 0) {
+              const { data: txItemsForCost } = await supabase
+                .from("transaction_items")
+                .select("quantity, cost_price, service_type")
+                .in("transaction_id", branchTxIds)
+              
+              if (txItemsForCost) {
+                totalProductCost = txItemsForCost.reduce((sum, item) => {
+                  const isProduct = item.service_type === 'product' || Number(item.cost_price) > 0;
+                  return sum + (isProduct ? Number(item.cost_price || 0) * (item.quantity || 1) : 0);
+                }, 0);
+              }
+            }
+          } catch (e) {
+            console.error("Error calculating product cost:", e);
           }
 
           // 4. Get kasbon (no branch_id filter since column may not exist on kasbon)
@@ -906,7 +925,7 @@ export function ComprehensiveReports() {
           const employeeCount = employees?.length || 0
 
           // Calculate net profit and metrics
-          const netProfit = totalRevenue - totalExpenses - totalCommissions
+          const netProfit = totalRevenue - totalExpenses - totalCommissions - totalProductCost
           const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0
           const avgTransactionValue = transactionCount > 0 ? totalRevenue / transactionCount : 0
           const revenuePerEmployee = employeeCount > 0 ? totalRevenue / employeeCount : 0
@@ -919,6 +938,7 @@ export function ComprehensiveReports() {
             totalExpenses,
             totalCommissions,
             totalKasbon,
+            totalProductCost,
             netProfit,
             profitMargin,
             transactions: transactionCount,
@@ -942,6 +962,7 @@ export function ComprehensiveReports() {
           totalExpenses: acc.totalExpenses + branch.totalExpenses,
           totalCommissions: acc.totalCommissions + branch.totalCommissions,
           totalKasbon: acc.totalKasbon + branch.totalKasbon,
+          totalProductCost: acc.totalProductCost + (branch.totalProductCost || 0),
           netProfit: acc.netProfit + branch.netProfit,
           cashPayments: acc.cashPayments + branch.cashPayments,
           qrisPayments: acc.qrisPayments + branch.qrisPayments,
@@ -952,6 +973,7 @@ export function ComprehensiveReports() {
           totalExpenses: 0,
           totalCommissions: 0,
           totalKasbon: 0,
+          totalProductCost: 0,
           netProfit: 0,
           cashPayments: 0,
           qrisPayments: 0,
@@ -1119,7 +1141,11 @@ export function ComprehensiveReports() {
               </div>
               <div class="metric-card">
                 <div class="metric-value" style="color: #ea580c;">Rp ${financialDetail.totalCommissions.toLocaleString("id-ID")}</div>
-                <div class="metric-label">Total Komisi Karyawan</div>
+                <div class="metric-label">Total Komisi</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-value" style="color: #8b5cf6;">Rp ${(financialDetail.totalProductCost || 0).toLocaleString("id-ID")}</div>
+                <div class="metric-label">Total Modal Produk</div>
               </div>
               <div class="metric-card">
                 <div class="metric-value" style="color: #d97706;">Rp ${financialDetail.totalKasbon.toLocaleString("id-ID")}</div>
@@ -1136,7 +1162,7 @@ export function ComprehensiveReports() {
                 </div>
                 <div style="text-align: right;">
                   <div style="font-size: 14px; color: #065f46;">Formula:</div>
-                  <div style="font-size: 12px; color: #047857;">Revenue - Expenses - Commissions - Kasbon</div>
+                  <div style="font-size: 12px; color: #047857;">Revenue - Expenses - Commissions - Modal Produk</div>
                 </div>
               </div>
             </div>
@@ -1489,8 +1515,12 @@ export function ComprehensiveReports() {
                   <td style="padding: 12px; text-align: right; color: #dc2626; font-weight: bold;">Rp ${financialDetail.totalExpenses.toLocaleString("id-ID")}</td>
                 </tr>
                 <tr style="border-bottom: 1px solid #d1d5db;">
-                  <td style="padding: 12px; font-weight: bold; color: #4b5563;">Total Commissions:</td>
+                  <td style="padding: 12px; font-weight: bold; color: #4b5563;">Total Komisi:</td>
                   <td style="padding: 12px; text-align: right; color: #ea580c; font-weight: bold;">Rp ${financialDetail.totalCommissions.toLocaleString("id-ID")}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #d1d5db;">
+                  <td style="padding: 12px; font-weight: bold; color: #4b5563;">Total Modal Produk (HPP):</td>
+                  <td style="padding: 12px; text-align: right; color: #8b5cf6; font-weight: bold;">Rp ${(financialDetail.totalProductCost || 0).toLocaleString("id-ID")}</td>
                 </tr>
                 <tr style="border-bottom: 1px solid #d1d5db;">
                   <td style="padding: 12px; font-weight: bold; color: #4b5563;">Total Kasbon:</td>

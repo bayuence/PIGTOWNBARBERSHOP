@@ -174,6 +174,12 @@ export function TransactionDetailModal({
                           {item.quantity} x Rp {item.unit_price?.toLocaleString("id-ID")} = Rp{" "}
                           {item.total_price?.toLocaleString("id-ID")}
                         </div>
+                        {(item.service_type === 'product' || item.service?.type === 'product' || item.cost_price > 0) && (
+                          <div className="text-[11px] text-green-800 bg-green-50 border border-green-200 px-2 py-1 rounded mt-1.5 inline-block font-medium">
+                            💵 Modal: Rp {(item.cost_price || 0).toLocaleString("id-ID")} | 
+                            Untung: Rp {((item.unit_price - (item.cost_price || 0)) * item.quantity).toLocaleString("id-ID")}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -228,6 +234,31 @@ export function TransactionDetailModal({
               </div>
             </div>
           )}
+
+          {/* Profit Summary */}
+          {(() => {
+            const productProfit = transaction.transaction_items?.reduce(
+              (sum: number, item: any) =>
+                sum +
+                ((item.service_type === 'product' || item.service?.type === 'product' || item.cost_price > 0)
+                  ? (item.unit_price - (item.cost_price || 0)) * item.quantity
+                  : 0),
+              0
+            ) || 0
+
+            if (productProfit <= 0) return null
+
+            return (
+              <div className="border-t pt-4 bg-green-50/50 p-4 rounded-lg border-2 border-dashed border-green-200">
+                <div className="flex justify-between items-center">
+                  <Label className="text-sm font-semibold text-green-800">Total Keuntungan Transaksi (Produk)</Label>
+                  <p className="text-xl font-bold text-green-700">
+                    Rp {productProfit.toLocaleString("id-ID")}
+                  </p>
+                </div>
+              </div>
+            )
+          })()}
         </div>
 
         <DialogFooter>

@@ -887,6 +887,7 @@ export function POSSystem() {
             service_id: parseInt(item.service.id), // Convert to INTEGER
             quantity: item.quantity,
             unit_price: item.service.price,
+            cost_price: item.service.type === 'product' ? Number(item.service.cost_price || 0) : 0,
             total_price: item.service.price * item.quantity,
             // Convert barber_id to INTEGER if exists
             barber_id: item.service.type === 'service' && servingEmployee ? parseInt(servingEmployee) : undefined,

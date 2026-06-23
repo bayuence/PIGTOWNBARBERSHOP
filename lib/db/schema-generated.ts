@@ -39,6 +39,7 @@ export const transaction_items = pgTable('transaction_items', {
   service_id: integer('service_id'), // Fixed: Changed from uuid to integer
   quantity: integer('quantity').notNull(),
   unit_price: numeric('unit_price').notNull(),
+  cost_price: numeric('cost_price'),
   total_price: numeric('total_price').notNull(),
   commission_status: varchar('commission_status'),
   commission_type: varchar('commission_type'),
@@ -56,6 +57,7 @@ export const services = pgTable('services', {
   name: varchar('name').notNull(),
   description: text('description'),
   price: numeric('price').notNull(),
+  cost_price: numeric('cost_price'),
   duration: integer('duration'),
   category_id: uuid('category_id'),
   type: varchar('type'),

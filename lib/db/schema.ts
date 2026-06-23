@@ -54,6 +54,7 @@ export const services = pgTable('services', {
   categoryId: integer('category_id'),
   commissionRate: decimal('commission_rate', { precision: 5, scale: 2 }).notNull().default('0'),
   type: text('type').notNull().default('service'), // service, product
+  costPrice: decimal('cost_price', { precision: 12, scale: 2 }).notNull().default('0'),
   stock: integer('stock').default(0),
   status: text('status').notNull().default('active'), // active, inactive
   imageUrl: text('image_url'),
@@ -95,6 +96,7 @@ export const transactionItems = pgTable('transaction_items', {
   barberId: integer('barber_id'),
   quantity: integer('quantity').notNull().default(1),
   price: decimal('price', { precision: 12, scale: 2 }).notNull(),
+  costPrice: decimal('cost_price', { precision: 12, scale: 2 }).notNull().default('0'),
   subtotal: decimal('subtotal', { precision: 12, scale: 2 }).notNull(),
   commissionRate: decimal('commission_rate', { precision: 5, scale: 2 }).notNull().default('0'),
   commissionAmount: decimal('commission_amount', { precision: 12, scale: 2 }).notNull().default('0'),

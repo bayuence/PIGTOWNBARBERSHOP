@@ -69,6 +69,7 @@ interface MenuItem {
   name: string
   description?: string
   price: number
+  cost_price?: number
   category_id: string
   type: "service" | "product"
   duration?: number
@@ -185,6 +186,7 @@ export function CashierManagement() {
     name: "",
     description: "",
     price: 0,
+    cost_price: 0,
     category_id: "",
     duration: 0,
     stock: 0,
@@ -693,6 +695,7 @@ export function CashierManagement() {
             name: menuForm.name,
             description: menuForm.description,
             price: menuForm.price,
+            cost_price: menuForm.type === "product" ? menuForm.cost_price : 0,
             category_id: menuForm.category_id || null,
             type: menuForm.type,
             duration: menuForm.type === "service" ? menuForm.duration : 0,
@@ -761,6 +764,7 @@ export function CashierManagement() {
           name: menuForm.name,
           description: menuForm.description,
           price: menuForm.price,
+          cost_price: menuForm.type === "product" ? menuForm.cost_price : 0,
           category_id: menuForm.category_id,
           type: menuForm.type,
           duration: menuForm.type === "service" ? menuForm.duration : 0,
@@ -1241,6 +1245,7 @@ export function CashierManagement() {
       name: "",
       description: "",
       price: 0,
+      cost_price: 0,
       category_id: "",
       duration: 0,
       stock: 0,
@@ -1258,6 +1263,7 @@ export function CashierManagement() {
       name: item.name,
       description: item.description || "",
       price: item.price,
+      cost_price: item.cost_price || 0,
       category_id: item.category_id,
       duration: item.duration || 0,
       stock: item.stock || 0,
@@ -1280,6 +1286,7 @@ export function CashierManagement() {
       name: "",
       description: "",
       price: 0,
+      cost_price: 0,
       category_id: "",
       duration: 0,
       stock: 0,
@@ -2312,73 +2319,96 @@ export function CashierManagement() {
               </div>
             </div>
 
-            <div className={menuForm.type === "service" ? "grid grid-cols-2 gap-4" : "grid grid-cols-1"}>
-              <div>
-                <label className="text-sm font-medium">Harga</label>
-                <Input
-                  type="text"
-                  value={formatNominal(menuForm.price)}
-                  onChange={(e) => setMenuForm((prev) => ({ ...prev, price: parseNominal(e.target.value) }))}
-                  placeholder="Rp 25.000"
-                />
-              </div>
-              {menuForm.type === "service" && (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Durasi</label>
-                  <div className="flex items-center gap-1.5">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-10 w-10 flex-shrink-0 border-gray-200"
-                      onClick={() => setMenuForm((prev) => ({ ...prev, duration: Math.max(0, prev.duration - 5) }))}
-                    >
-                      -
-                    </Button>
-                    <div className="relative flex-1">
-                      <Input
-                        type="text"
-                        value={menuForm.duration === 0 ? "" : menuForm.duration}
-                        onChange={(e) => {
-                          const val = e.target.value.replace(/[^0-9]/g, '');
-                          setMenuForm((prev) => ({ ...prev, duration: val === "" ? 0 : parseInt(val, 10) }));
-                        }}
-                        className="text-center font-bold pr-10 h-10"
-                        placeholder="0"
-                      />
-                      <span className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-[10px] text-gray-400 font-medium">
-                        menit
-                      </span>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-10 w-10 flex-shrink-0 border-gray-200"
-                      onClick={() => setMenuForm((prev) => ({ ...prev, duration: prev.duration + 5 }))}
-                    >
-                      +
-                    </Button>
+            <div className="grid grid-cols-2 gap-4">
+              {menuForm.type === "service" ? (
+                <>
+                  <div>
+                    <label className="text-sm font-medium">Harga</label>
+                    <Input
+                      type="text"
+                      value={formatNominal(menuForm.price)}
+                      onChange={(e) => setMenuForm((prev) => ({ ...prev, price: parseNominal(e.target.value) }))}
+                      placeholder="Rp 25.000"
+                    />
                   </div>
-                  
-                  {/* Quick Select Buttons */}
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {[15, 30, 45, 60, 90, 120].map((mins) => (
-                      <button
-                        key={mins}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Durasi</label>
+                    <div className="flex items-center gap-1.5">
+                      <Button
                         type="button"
-                        onClick={() => setMenuForm((prev) => ({ ...prev, duration: mins }))}
-                        className={`px-1.5 py-0.5 text-[10px] rounded border transition-all ${
-                          menuForm.duration === mins
-                            ? "bg-red-600 border-red-600 text-white font-semibold shadow-sm"
-                            : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300"
-                        }`}
+                        variant="outline"
+                        size="icon"
+                        className="h-10 w-10 flex-shrink-0 border-gray-200"
+                        onClick={() => setMenuForm((prev) => ({ ...prev, duration: Math.max(0, prev.duration - 5) }))}
                       >
-                        {mins}m
-                      </button>
-                    ))}
+                        -
+                      </Button>
+                      <div className="relative flex-1">
+                        <Input
+                          type="text"
+                          value={menuForm.duration === 0 ? "" : menuForm.duration}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9]/g, '');
+                            setMenuForm((prev) => ({ ...prev, duration: val === "" ? 0 : parseInt(val, 10) }));
+                          }}
+                          className="text-center font-bold pr-10 h-10"
+                          placeholder="0"
+                        />
+                        <span className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-[10px] text-gray-400 font-medium">
+                          menit
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-10 w-10 flex-shrink-0 border-gray-200"
+                        onClick={() => setMenuForm((prev) => ({ ...prev, duration: prev.duration + 5 }))}
+                      >
+                        +
+                      </Button>
+                    </div>
+                    
+                    {/* Quick Select Buttons */}
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {[15, 30, 45, 60, 90, 120].map((mins) => (
+                        <button
+                          key={mins}
+                          type="button"
+                          onClick={() => setMenuForm((prev) => ({ ...prev, duration: mins }))}
+                          className={`px-1.5 py-0.5 text-[10px] rounded border transition-all ${
+                            menuForm.duration === mins
+                              ? "bg-red-600 border-red-600 text-white font-semibold shadow-sm"
+                              : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300"
+                          }`}
+                        >
+                          {mins}m
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-sm font-medium">Harga Modal</label>
+                    <Input
+                      type="text"
+                      value={formatNominal(menuForm.cost_price)}
+                      onChange={(e) => setMenuForm((prev) => ({ ...prev, cost_price: parseNominal(e.target.value) }))}
+                      placeholder="Rp 15.000"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Harga Jual</label>
+                    <Input
+                      type="text"
+                      value={formatNominal(menuForm.price)}
+                      onChange={(e) => setMenuForm((prev) => ({ ...prev, price: parseNominal(e.target.value) }))}
+                      placeholder="Rp 25.000"
+                    />
+                  </div>
+                </>
               )}
             </div>
             <div>

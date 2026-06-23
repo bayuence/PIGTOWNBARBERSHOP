@@ -199,6 +199,24 @@ export function TransactionTable({
                   <div className="font-bold text-lg text-red-600">
                     Rp {transaction.total_amount?.toLocaleString("id-ID")}
                   </div>
+                  {(() => {
+                    const totalProfit = transaction.transaction_items?.reduce(
+                      (sum: number, item: any) =>
+                        sum +
+                        ((item.service_type === 'product' || item.service?.type === 'product' || Number(item.cost_price) > 0)
+                          ? (Number(item.unit_price) - Number(item.cost_price || 0)) * item.quantity
+                          : 0),
+                      0
+                    ) || 0
+
+                    if (totalProfit <= 0) return null
+
+                    return (
+                      <div className="text-xs text-green-600 font-semibold mt-0.5">
+                        Untung Produk: +Rp {totalProfit.toLocaleString('id-ID')}
+                      </div>
+                    )
+                  })()}
                 </div>
               </div>
 

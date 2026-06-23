@@ -17,11 +17,13 @@ export interface TransactionItem {
   service_id: string
   quantity: number
   unit_price: number
+  cost_price?: number
   total_price: number
   barber_id?: number
   service?: {
     name: string
     price: number
+    cost_price?: number
   }
   commission_type?: 'percentage' | 'fixed'
   commission_value?: number
