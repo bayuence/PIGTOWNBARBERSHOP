@@ -542,8 +542,7 @@ export async function getAttendance(branchId?: string, startDate?: string, endDa
         *,
         branches:branch_id (
           id,
-          name,
-          shifts
+          name
         ),
         users:user_id (
           id,
@@ -1391,8 +1390,7 @@ export async function getEmployeeAttendanceWithPhotos(userId: string, limit = 30
         *,
         branches:branch_id (
           id,
-          name,
-          shifts
+          name
         )
       `)
       .eq('user_id', userId)
@@ -1462,8 +1460,7 @@ export async function getEmployeePhotos(userId: string, limit = 20) {
         *,
         branches:branch_id (
           id,
-          name,
-          shifts
+          name
         )
       `)
       .eq('user_id', userId)
