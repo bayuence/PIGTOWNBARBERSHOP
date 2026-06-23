@@ -722,7 +722,7 @@ export function CashierManagement() {
       })
 
       setIsAddMenuItemDialogOpen(false)
-      setMenuForm({ name: "", description: "", price: 0, category_id: "", duration: 0, type: "service", stock: 0, image_url: "" })
+      setMenuForm({ name: "", description: "", price: 0, cost_price: 0, category_id: "", duration: 0, type: "service", stock: 0, image_url: "" })
       setMenuImageFile(null)
       setMenuImagePreview(null)
       fetchMenuItems()
@@ -790,7 +790,7 @@ export function CashierManagement() {
 
       setIsAddMenuItemDialogOpen(false)
       setEditingMenuItem(null)
-      setMenuForm({ name: "", description: "", price: 0, category_id: "", duration: 0, type: "service", stock: 0, image_url: "" })
+      setMenuForm({ name: "", description: "", price: 0, cost_price: 0, category_id: "", duration: 0, type: "service", stock: 0, image_url: "" })
       setMenuImageFile(null)
       setMenuImagePreview(null)
       fetchMenuItems()

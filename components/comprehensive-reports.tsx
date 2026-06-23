@@ -125,6 +125,7 @@ interface FinancialDetail {
   totalExpenses: number
   totalCommissions: number
   totalKasbon: number
+  totalProductCost: number
   netProfit: number
   profitMargin: number
   cashPayments: number
@@ -139,6 +140,7 @@ interface BranchFinancialDetail {
   totalExpenses: number
   totalCommissions: number
   totalKasbon: number
+  totalProductCost: number
   netProfit: number
   profitMargin: number
   transactions: number
@@ -176,6 +178,7 @@ export function ComprehensiveReports() {
     totalExpenses: 0,
     totalCommissions: 0,
     totalKasbon: 0,
+    totalProductCost: 0,
     netProfit: 0,
     profitMargin: 0,
     cashPayments: 0,
@@ -356,7 +359,7 @@ export function ComprehensiveReports() {
       }
 
       // Filter branches if specific branch selected
-      const filteredBranches = selectedBranch !== "all" 
+      const filteredBranches = selectedBranch !== "all"
         ? branchesData.filter((b: any) => b.id === selectedBranch)
         : branchesData
 
@@ -448,7 +451,7 @@ export function ComprehensiveReports() {
       // Count service usage - gunakan service_name dari snapshot jika service_id tidak valid
       const serviceCounts: { [key: string]: number } = {}
       const serviceNames: { [key: string]: string } = {}
-      
+
       transactionItems?.forEach((item) => {
         const key = item.service_id || item.service_name || 'unknown'
         serviceCounts[key] = (serviceCounts[key] || 0) + (item.quantity || 1)
@@ -537,10 +540,10 @@ export function ComprehensiveReports() {
           if (displayPosition === "owner") displayPosition = "Owner"
           if (displayPosition === "barber") displayPosition = "Barber"
           if (displayPosition === "manager") displayPosition = "Manager"
-          
+
           // Get branch name from branchList
           const branchName = branchList?.find((b: any) => b.id === user.branch_id)?.name || "Unknown Branch"
-          
+
           return {
             name: user.name,
             revenue,
@@ -611,7 +614,7 @@ export function ComprehensiveReports() {
         todayQuery = todayQuery.eq("branch_id", selectedBranch)
       }
 
-      const { data: todayAttendance, error: todayError} = await todayQuery as { data: any[] | null; error: any }
+      const { data: todayAttendance, error: todayError } = await todayQuery as { data: any[] | null; error: any }
 
       if (todayError) {
         console.log("[v0] Today attendance error:", todayError)
@@ -810,12 +813,12 @@ export function ComprehensiveReports() {
   const fetchFinancialDetails = async () => {
     try {
       console.log("[v0] Fetching financial details...")
-      
+
       const { startDate: start, endDate: end } = getDateRange(dateRange, startDate, endDate)
-      
+
       // Get branches for filtering
       const { data: branchesData } = await getBranches()
-      const filteredBranches = selectedBranch !== "all" 
+      const filteredBranches = selectedBranch !== "all"
         ? branchesData?.filter((b: any) => b.id === selectedBranch) || []
         : branchesData || []
 
@@ -825,7 +828,7 @@ export function ComprehensiveReports() {
           // 1. Get transactions (revenue & payment methods)
           const { data: transactions } = await supabase
             .from("transactions")
-            .select("total_amount, payment_method, created_at")
+            .select("id, total_amount, payment_method, created_at")
             .eq("branch_id", branch.id)
             .eq("payment_status", "completed")
             .gte("created_at", start)
@@ -885,7 +888,7 @@ export function ComprehensiveReports() {
                 .from("transaction_items")
                 .select("quantity, cost_price, service_type")
                 .in("transaction_id", branchTxIds)
-              
+
               if (txItemsForCost) {
                 totalProductCost = txItemsForCost.reduce((sum, item) => {
                   const isProduct = item.service_type === 'product' || Number(item.cost_price) > 0;
@@ -1011,14 +1014,14 @@ export function ComprehensiveReports() {
       const { startDate: start, endDate: end } = getDateRange(dateRange, startDate, endDate)
       const startDateObj = new Date(start)
       const endDateObj = new Date(end)
-      
+
       const monthNames = [
         "Januari", "Februari", "Maret", "April", "Mei", "Juni",
         "Juli", "Agustus", "September", "Oktober", "November", "Desember"
       ]
-      
+
       let periodText = ""
-      
+
       if (dateRange === "thisMonth") {
         periodText = `Bulan ${monthNames[startDateObj.getMonth()]} ${startDateObj.getFullYear()}`
       } else if (dateRange === "lastMonth") {
@@ -1201,15 +1204,14 @@ export function ComprehensiveReports() {
             </table>
           </div>
 
-          ${
-            branchFinancialDetails.length > 0
-              ? `
+          ${branchFinancialDetails.length > 0
+          ? `
           <div class="section page-break">
             <h2>🏪 ANALISIS KEUANGAN PER CABANG</h2>
             <p style="color: #666; font-style: italic; margin-bottom: 20px;">Detail pendapatan, pengeluaran, dan keuntungan setiap cabang</p>
             ${branchFinancialDetails
-              .map(
-                (branch) => `
+            .map(
+              (branch) => `
             <div style="margin-bottom: 30px; padding: 20px; background: #f9fafb; border-radius: 12px; border: 2px solid #e5e7eb;">
               <h3 style="margin: 0 0 15px 0; color: #1f2937; font-size: 20px;">📍 ${branch.branchName}</h3>
               
@@ -1248,16 +1250,15 @@ export function ComprehensiveReports() {
               </div>
             </div>
             `,
-              )
-              .join("")}
+            )
+            .join("")}
           </div>
           `
-              : ""
-          }
+          : ""
+        }
 
-          ${
-            revenueData.length > 0
-              ? `
+          ${revenueData.length > 0
+          ? `
           <div class="section">
             <h2>TREN REVENUE & TRANSAKSI</h2>
             <table>
@@ -1270,26 +1271,25 @@ export function ComprehensiveReports() {
               </thead>
               <tbody>
                 ${revenueData
-                  .map(
-                    (item) => `
+            .map(
+              (item) => `
                   <tr>
                     <td>${item.month}</td>
                     <td class="text-right">Rp ${item.revenue.toLocaleString("id-ID")}</td>
                     <td class="text-center">${item.transactions}</td>
                   </tr>
                 `,
-                  )
-                  .join("")}
+            )
+            .join("")}
               </tbody>
             </table>
           </div>
           `
-              : ""
-          }
+          : ""
+        }
 
-          ${
-            branchPerformance.length > 0
-              ? `
+          ${branchPerformance.length > 0
+          ? `
           <div class="section page-break">
             <h2>PERFORMA CABANG</h2>
             <table>
@@ -1303,8 +1303,8 @@ export function ComprehensiveReports() {
               </thead>
               <tbody>
                 ${branchPerformance
-                  .map(
-                    (branch) => `
+            .map(
+              (branch) => `
                   <tr>
                     <td>${branch.branch}</td>
                     <td class="text-right">Rp ${branch.revenue.toLocaleString("id-ID")}</td>
@@ -1312,18 +1312,17 @@ export function ComprehensiveReports() {
                     <td class="text-center">${branch.employees}</td>
                   </tr>
                 `,
-                  )
-                  .join("")}
+            )
+            .join("")}
               </tbody>
             </table>
           </div>
           `
-              : ""
-          }
+          : ""
+        }
 
-          ${
-            employeePerformance.length > 0
-              ? `
+          ${employeePerformance.length > 0
+          ? `
           <div class="section">
             <h2>TOP PERFORMA KARYAWAN</h2>
             <table>
@@ -1339,9 +1338,9 @@ export function ComprehensiveReports() {
               </thead>
               <tbody>
                 ${employeePerformance
-                  .slice(0, 10)
-                  .map(
-                    (employee, index) => `
+            .slice(0, 10)
+            .map(
+              (employee, index) => `
                   <tr class="${index < 3 ? `ranking-${index + 1}` : ""}">
                     <td class="text-center">${index + 1}</td>
                     <td>${employee.name}</td>
@@ -1351,18 +1350,17 @@ export function ComprehensiveReports() {
                     <td class="text-center">${employee.rating.toFixed(1)}</td>
                   </tr>
                 `,
-                  )
-                  .join("")}
+            )
+            .join("")}
               </tbody>
             </table>
           </div>
           `
-              : ""
-          }
+          : ""
+        }
 
-          ${
-            serviceData.length > 0
-              ? `
+          ${serviceData.length > 0
+          ? `
           <div class="section">
             <h2>ANALISIS LAYANAN</h2>
             <table>
@@ -1375,22 +1373,22 @@ export function ComprehensiveReports() {
               </thead>
               <tbody>
                 ${serviceData
-                  .map(
-                    (service) => `
+            .map(
+              (service) => `
                   <tr>
                     <td>${service.name}</td>
                     <td class="text-center">${service.count}</td>
                     <td class="text-center">${service.value}%</td>
                   </tr>
                 `,
-                  )
-                  .join("")}
+            )
+            .join("")}
               </tbody>
             </table>
           </div>
           `
-              : ""
-          }
+          : ""
+        }
 
           <div class="section page-break">
             <h2>STATISTIK KEHADIRAN</h2>
@@ -1409,9 +1407,8 @@ export function ComprehensiveReports() {
               </div>
             </div>
 
-            ${
-              employeeAttendanceList.length > 0
-                ? `
+            ${employeeAttendanceList.length > 0
+          ? `
             <h3>RANKING KEHADIRAN KARYAWAN</h3>
             <p style="color: #666; font-style: italic; margin-bottom: 15px;">Diurutkan berdasarkan total jam kerja terbanyak</p>
             <table>
@@ -1426,8 +1423,8 @@ export function ComprehensiveReports() {
               </thead>
               <tbody>
                 ${employeeAttendanceList
-                  .map(
-                    (employee, index) => `
+            .map(
+              (employee, index) => `
                   <tr class="${index < 3 ? `ranking-${index + 1}` : ""}">
                     <td class="text-center">${index + 1}</td>
                     <td>${employee.name}</td>
@@ -1436,8 +1433,8 @@ export function ComprehensiveReports() {
                     <td class="text-center">${employee.attendanceRate}%</td>
                   </tr>
                 `,
-                  )
-                  .join("")}
+            )
+            .join("")}
               </tbody>
             </table>
 
@@ -1446,21 +1443,21 @@ export function ComprehensiveReports() {
               <ul style="margin: 0; padding-left: 20px;">
                 <li>Karyawan terbaik: ${employeeAttendanceList[0]?.name || "N/A"} dengan total ${employeeAttendanceList[0]?.totalHours || "N/A"} jam kerja</li>
                 <li>Rata-rata jam kerja semua karyawan: ${(() => {
-                  const averageHours =
-                    employeeAttendanceList.reduce((sum, emp) => sum + emp.totalMinutes, 0) /
-                    employeeAttendanceList.length /
-                    60
-                  return `${Math.floor(averageHours)}:${Math.floor((averageHours % 1) * 60)
-                    .toString()
-                    .padStart(2, "0")}:00`
-                })()}</li>
+            const averageHours =
+              employeeAttendanceList.reduce((sum, emp) => sum + emp.totalMinutes, 0) /
+              employeeAttendanceList.length /
+              60
+            return `${Math.floor(averageHours)}:${Math.floor((averageHours % 1) * 60)
+              .toString()
+              .padStart(2, "0")}:00`
+          })()}</li>
                 <li>Total karyawan yang dipantau: ${employeeAttendanceList.length} orang</li>
                 <li>Tingkat kehadiran rata-rata: ${Math.round(employeeAttendanceList.reduce((sum, emp) => sum + emp.attendanceRate, 0) / employeeAttendanceList.length)}%</li>
               </ul>
             </div>
             `
-                : ""
-            }
+          : ""
+        }
           </div>
 
           <div class="section page-break">
@@ -1474,10 +1471,10 @@ export function ComprehensiveReports() {
                 ${employeeAttendanceList.length > 0 ? `<li><strong>Kehadiran Terbaik:</strong> ${employeeAttendanceList[0]?.name} dengan ${employeeAttendanceList[0]?.totalHours} jam kerja (${employeeAttendanceList[0]?.attendanceRate}% kehadiran)</li>` : ""}
                 <li><strong>Profit Margin:</strong> ${financialDetail.profitMargin.toFixed(2)}% dari total revenue</li>
                 <li><strong>Metode Pembayaran Favorit:</strong> ${financialDetail.cashPayments > financialDetail.qrisPayments && financialDetail.cashPayments > financialDetail.transferPayments ? "Cash" : financialDetail.qrisPayments > financialDetail.transferPayments ? "QRIS" : "Transfer"} (${Math.max(
-                  financialDetail.cashPayments > 0 ? (financialDetail.cashPayments / financialDetail.totalRevenue) * 100 : 0,
-                  financialDetail.qrisPayments > 0 ? (financialDetail.qrisPayments / financialDetail.totalRevenue) * 100 : 0,
-                  financialDetail.transferPayments > 0 ? (financialDetail.transferPayments / financialDetail.totalRevenue) * 100 : 0
-                ).toFixed(1)}%)</li>
+          financialDetail.cashPayments > 0 ? (financialDetail.cashPayments / financialDetail.totalRevenue) * 100 : 0,
+          financialDetail.qrisPayments > 0 ? (financialDetail.qrisPayments / financialDetail.totalRevenue) * 100 : 0,
+          financialDetail.transferPayments > 0 ? (financialDetail.transferPayments / financialDetail.totalRevenue) * 100 : 0
+        ).toFixed(1)}%)</li>
               </ul>
             </div>
 
@@ -1792,14 +1789,14 @@ export function ComprehensiveReports() {
                         </div>
                         <Badge className="bg-green-600 text-white border-0 font-bold">Aktif</Badge>
                       </div>
-                      
+
                       <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="text-center p-3 bg-blue-50 rounded-lg">
                           <div className="text-xs text-gray-600 mb-1">Total Transaksi</div>
                           <div className="text-xl font-bold text-blue-600">{branch.transactions}</div>
                           <div className="text-xs text-gray-500">transaksi</div>
                         </div>
-                        
+
                         <div className="text-center p-3 bg-green-50 rounded-lg">
                           <div className="text-xs text-gray-600 mb-1">Total Revenue</div>
                           <div className="text-xl font-bold text-green-600">
@@ -1807,7 +1804,7 @@ export function ComprehensiveReports() {
                           </div>
                           <div className="text-xs text-gray-500">pendapatan</div>
                         </div>
-                        
+
                         <div className="text-center p-3 bg-orange-50 rounded-lg">
                           <div className="text-xs text-gray-600 mb-1">Avg/Transaksi</div>
                           <div className="text-xl font-bold text-orange-600">
@@ -1815,7 +1812,7 @@ export function ComprehensiveReports() {
                           </div>
                           <div className="text-xs text-gray-500">rata-rata</div>
                         </div>
-                        
+
                         <div className="text-center p-3 bg-purple-50 rounded-lg">
                           <div className="text-xs text-gray-600 mb-1">Karyawan</div>
                           <div className="text-xl font-bold text-purple-600">{branch.employees}</div>
@@ -1868,7 +1865,7 @@ export function ComprehensiveReports() {
                           </div>
                         </div>
                       </div>
-                      
+
                       <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
                         <div className="text-center p-3 bg-green-50 rounded-lg">
                           <div className="text-xs text-gray-600 mb-1">Total Penjualan</div>
@@ -1877,13 +1874,13 @@ export function ComprehensiveReports() {
                           </div>
                           <div className="text-xs text-gray-500">revenue</div>
                         </div>
-                        
+
                         <div className="text-center p-3 bg-blue-50 rounded-lg">
                           <div className="text-xs text-gray-600 mb-1">Transaksi</div>
                           <div className="text-lg font-bold text-blue-600">{employee.transactions}</div>
                           <div className="text-xs text-gray-500">dibayar</div>
                         </div>
-                        
+
                         <div className="text-center p-3 bg-orange-50 rounded-lg">
                           <div className="text-xs text-gray-600 mb-1">Avg/Transaksi</div>
                           <div className="text-lg font-bold text-orange-600">
@@ -1891,7 +1888,7 @@ export function ComprehensiveReports() {
                           </div>
                           <div className="text-xs text-gray-500">rata-rata</div>
                         </div>
-                        
+
                         <div className="text-center p-3 bg-purple-50 rounded-lg">
                           <div className="text-xs text-gray-600 mb-1">Produktivitas</div>
                           <div className="text-lg font-bold text-purple-600">
@@ -2024,9 +2021,9 @@ export function ComprehensiveReports() {
                         Rp {financialDetail.cashPayments.toLocaleString("id-ID")}
                       </div>
                       <div className="mt-2 bg-gray-200 rounded-full h-2">
-                        <div 
+                        <div
                           className="bg-green-600 h-2 rounded-full transition-all"
-                          style={{width: `${financialDetail.totalRevenue > 0 ? (financialDetail.cashPayments / financialDetail.totalRevenue * 100) : 0}%`}}
+                          style={{ width: `${financialDetail.totalRevenue > 0 ? (financialDetail.cashPayments / financialDetail.totalRevenue * 100) : 0}%` }}
                         ></div>
                       </div>
                     </div>
@@ -2042,9 +2039,9 @@ export function ComprehensiveReports() {
                         Rp {financialDetail.qrisPayments.toLocaleString("id-ID")}
                       </div>
                       <div className="mt-2 bg-gray-200 rounded-full h-2">
-                        <div 
+                        <div
                           className="bg-blue-600 h-2 rounded-full transition-all"
-                          style={{width: `${financialDetail.totalRevenue > 0 ? (financialDetail.qrisPayments / financialDetail.totalRevenue * 100) : 0}%`}}
+                          style={{ width: `${financialDetail.totalRevenue > 0 ? (financialDetail.qrisPayments / financialDetail.totalRevenue * 100) : 0}%` }}
                         ></div>
                       </div>
                     </div>
@@ -2060,9 +2057,9 @@ export function ComprehensiveReports() {
                         Rp {financialDetail.transferPayments.toLocaleString("id-ID")}
                       </div>
                       <div className="mt-2 bg-gray-200 rounded-full h-2">
-                        <div 
+                        <div
                           className="bg-purple-600 h-2 rounded-full transition-all"
-                          style={{width: `${financialDetail.totalRevenue > 0 ? (financialDetail.transferPayments / financialDetail.totalRevenue * 100) : 0}%`}}
+                          style={{ width: `${financialDetail.totalRevenue > 0 ? (financialDetail.transferPayments / financialDetail.totalRevenue * 100) : 0}%` }}
                         ></div>
                       </div>
                     </div>
@@ -2202,9 +2199,9 @@ export function ComprehensiveReports() {
                                 Rp {branch.cashPayments.toLocaleString("id-ID")}
                               </div>
                               <div className="mt-2 bg-gray-200 rounded-full h-2">
-                                <div 
+                                <div
                                   className="bg-green-600 h-2 rounded-full"
-                                  style={{width: `${branch.totalRevenue > 0 ? (branch.cashPayments / branch.totalRevenue * 100) : 0}%`}}
+                                  style={{ width: `${branch.totalRevenue > 0 ? (branch.cashPayments / branch.totalRevenue * 100) : 0}%` }}
                                 ></div>
                               </div>
                             </div>
@@ -2220,9 +2217,9 @@ export function ComprehensiveReports() {
                                 Rp {branch.qrisPayments.toLocaleString("id-ID")}
                               </div>
                               <div className="mt-2 bg-gray-200 rounded-full h-2">
-                                <div 
+                                <div
                                   className="bg-blue-600 h-2 rounded-full"
-                                  style={{width: `${branch.totalRevenue > 0 ? (branch.qrisPayments / branch.totalRevenue * 100) : 0}%`}}
+                                  style={{ width: `${branch.totalRevenue > 0 ? (branch.qrisPayments / branch.totalRevenue * 100) : 0}%` }}
                                 ></div>
                               </div>
                             </div>
@@ -2238,9 +2235,9 @@ export function ComprehensiveReports() {
                                 Rp {branch.transferPayments.toLocaleString("id-ID")}
                               </div>
                               <div className="mt-2 bg-gray-200 rounded-full h-2">
-                                <div 
+                                <div
                                   className="bg-purple-600 h-2 rounded-full"
-                                  style={{width: `${branch.totalRevenue > 0 ? (branch.transferPayments / branch.totalRevenue * 100) : 0}%`}}
+                                  style={{ width: `${branch.totalRevenue > 0 ? (branch.transferPayments / branch.totalRevenue * 100) : 0}%` }}
                                 ></div>
                               </div>
                             </div>
@@ -2256,14 +2253,14 @@ export function ComprehensiveReports() {
                             <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                               <div className="text-xs text-gray-600 mb-1">Rata-rata per Transaksi</div>
                               <div className="text-lg font-bold text-blue-700">
-                                Rp {branch.avgTransactionValue.toLocaleString("id-ID", {maximumFractionDigits: 0})}
+                                Rp {branch.avgTransactionValue.toLocaleString("id-ID", { maximumFractionDigits: 0 })}
                               </div>
                             </div>
 
                             <div className="p-3 bg-green-50 rounded-lg border border-green-200">
                               <div className="text-xs text-gray-600 mb-1">Pendapatan per Karyawan</div>
                               <div className="text-lg font-bold text-green-700">
-                                Rp {branch.revenuePerEmployee.toLocaleString("id-ID", {maximumFractionDigits: 0})}
+                                Rp {branch.revenuePerEmployee.toLocaleString("id-ID", { maximumFractionDigits: 0 })}
                               </div>
                             </div>
 
@@ -2289,16 +2286,16 @@ export function ComprehensiveReports() {
                               <div className="flex justify-between items-center mb-2">
                                 <span className="text-sm font-medium text-gray-700">Kontribusi Pendapatan:</span>
                                 <span className="text-lg font-bold text-green-600">
-                                  {financialDetail.totalRevenue > 0 
+                                  {financialDetail.totalRevenue > 0
                                     ? ((branch.totalRevenue / financialDetail.totalRevenue) * 100).toFixed(1)
                                     : 0}%
                                 </span>
                               </div>
                               <div className="bg-gray-200 rounded-full h-4 overflow-hidden">
-                                <div 
+                                <div
                                   className="bg-gradient-to-r from-green-500 to-emerald-600 h-4 rounded-full flex items-center justify-end px-2 transition-all duration-500"
                                   style={{
-                                    width: `${financialDetail.totalRevenue > 0 
+                                    width: `${financialDetail.totalRevenue > 0
                                       ? (branch.totalRevenue / financialDetail.totalRevenue * 100)
                                       : 0}%`
                                   }}
@@ -2317,16 +2314,16 @@ export function ComprehensiveReports() {
                               <div className="flex justify-between items-center mb-2">
                                 <span className="text-sm font-medium text-gray-700">Kontribusi Transaksi:</span>
                                 <span className="text-lg font-bold text-blue-600">
-                                  {dashboardStats.totalTransactions > 0 
+                                  {dashboardStats.totalTransactions > 0
                                     ? ((branch.transactions / dashboardStats.totalTransactions) * 100).toFixed(1)
                                     : 0}%
                                 </span>
                               </div>
                               <div className="bg-gray-200 rounded-full h-4 overflow-hidden">
-                                <div 
+                                <div
                                   className="bg-gradient-to-r from-blue-500 to-cyan-600 h-4 rounded-full flex items-center justify-end px-2 transition-all duration-500"
                                   style={{
-                                    width: `${dashboardStats.totalTransactions > 0 
+                                    width: `${dashboardStats.totalTransactions > 0
                                       ? (branch.transactions / dashboardStats.totalTransactions * 100)
                                       : 0}%`
                                   }}
@@ -2393,8 +2390,8 @@ export function ComprehensiveReports() {
                   <CardContent className="p-4">
                     <div className="text-xs text-gray-600 mb-1">📊 Rata-rata Revenue</div>
                     <div className="text-3xl font-bold text-orange-600">
-                      Rp {branchFinancialDetails.length > 0 
-                        ? (financialDetail.totalRevenue / branchFinancialDetails.length).toLocaleString("id-ID", {maximumFractionDigits: 0})
+                      Rp {branchFinancialDetails.length > 0
+                        ? (financialDetail.totalRevenue / branchFinancialDetails.length).toLocaleString("id-ID", { maximumFractionDigits: 0 })
                         : "0"}
                     </div>
                     <p className="text-xs text-gray-500 mt-1">Per cabang</p>
@@ -2434,7 +2431,7 @@ export function ComprehensiveReports() {
                     const isTopPerformer = rank <= 3
                     const rankColor = rank === 1 ? 'bg-yellow-500' : rank === 2 ? 'bg-gray-400' : rank === 3 ? 'bg-orange-600' : 'bg-gray-600'
                     const rankEmoji = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '🏪'
-                    
+
                     return (
                       <div key={branch.branchId} className={`border-2 rounded-xl overflow-hidden transition-all hover:shadow-2xl ${isTopPerformer ? 'border-yellow-400 shadow-lg' : 'border-gray-300'}`}>
                         {/* Header Cabang dengan Ranking */}
@@ -2504,7 +2501,7 @@ export function ComprehensiveReports() {
                               <div className="p-4 bg-gradient-to-br from-orange-50 to-amber-100 rounded-lg border border-orange-300">
                                 <div className="text-xs text-gray-600 mb-1">📊 Avg/Transaksi</div>
                                 <div className="text-xl font-bold text-orange-700">
-                                  Rp {branch.avgTransactionValue.toLocaleString("id-ID", {maximumFractionDigits: 0})}
+                                  Rp {branch.avgTransactionValue.toLocaleString("id-ID", { maximumFractionDigits: 0 })}
                                 </div>
                                 <div className="text-xs text-orange-600 mt-1">Nilai rata-rata</div>
                               </div>
@@ -2561,7 +2558,7 @@ export function ComprehensiveReports() {
                             <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-lg">
                               💳 ANALISIS TRANSAKSI & METODE PEMBAYARAN
                             </h4>
-                            
+
                             {/* Stats Transaksi */}
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                               <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 text-center">
@@ -2572,7 +2569,7 @@ export function ComprehensiveReports() {
                               <div className="p-3 bg-green-50 rounded-lg border border-green-200 text-center">
                                 <div className="text-xs text-gray-600 mb-1">Avg/Transaksi</div>
                                 <div className="text-lg font-bold text-green-700">
-                                  Rp {branch.avgTransactionValue.toLocaleString("id-ID", {maximumFractionDigits: 0})}
+                                  Rp {branch.avgTransactionValue.toLocaleString("id-ID", { maximumFractionDigits: 0 })}
                                 </div>
                               </div>
 
@@ -2604,9 +2601,9 @@ export function ComprehensiveReports() {
                                   Rp {branch.cashPayments.toLocaleString("id-ID")}
                                 </div>
                                 <div className="mt-2 bg-gray-200 rounded-full h-3">
-                                  <div 
+                                  <div
                                     className="bg-green-600 h-3 rounded-full transition-all"
-                                    style={{width: `${branch.totalRevenue > 0 ? (branch.cashPayments / branch.totalRevenue * 100) : 0}%`}}
+                                    style={{ width: `${branch.totalRevenue > 0 ? (branch.cashPayments / branch.totalRevenue * 100) : 0}%` }}
                                   ></div>
                                 </div>
                               </div>
@@ -2622,9 +2619,9 @@ export function ComprehensiveReports() {
                                   Rp {branch.qrisPayments.toLocaleString("id-ID")}
                                 </div>
                                 <div className="mt-2 bg-gray-200 rounded-full h-3">
-                                  <div 
+                                  <div
                                     className="bg-blue-600 h-3 rounded-full transition-all"
-                                    style={{width: `${branch.totalRevenue > 0 ? (branch.qrisPayments / branch.totalRevenue * 100) : 0}%`}}
+                                    style={{ width: `${branch.totalRevenue > 0 ? (branch.qrisPayments / branch.totalRevenue * 100) : 0}%` }}
                                   ></div>
                                 </div>
                               </div>
@@ -2640,9 +2637,9 @@ export function ComprehensiveReports() {
                                   Rp {branch.transferPayments.toLocaleString("id-ID")}
                                 </div>
                                 <div className="mt-2 bg-gray-200 rounded-full h-3">
-                                  <div 
+                                  <div
                                     className="bg-purple-600 h-3 rounded-full transition-all"
-                                    style={{width: `${branch.totalRevenue > 0 ? (branch.transferPayments / branch.totalRevenue * 100) : 0}%`}}
+                                    style={{ width: `${branch.totalRevenue > 0 ? (branch.transferPayments / branch.totalRevenue * 100) : 0}%` }}
                                   ></div>
                                 </div>
                               </div>
@@ -2660,22 +2657,22 @@ export function ComprehensiveReports() {
                                 <div className="flex justify-between items-center mb-2">
                                   <span className="text-sm font-medium text-gray-700">Kontribusi Revenue terhadap Total Bisnis:</span>
                                   <span className="text-lg font-bold text-green-600">
-                                    {financialDetail.totalRevenue > 0 
+                                    {financialDetail.totalRevenue > 0
                                       ? ((branch.totalRevenue / financialDetail.totalRevenue) * 100).toFixed(1)
                                       : 0}%
                                   </span>
                                 </div>
                                 <div className="bg-gray-200 rounded-full h-4 overflow-hidden">
-                                  <div 
+                                  <div
                                     className="bg-gradient-to-r from-green-500 to-emerald-600 h-4 rounded-full flex items-center justify-end px-2 transition-all duration-500"
                                     style={{
-                                      width: `${financialDetail.totalRevenue > 0 
+                                      width: `${financialDetail.totalRevenue > 0
                                         ? (branch.totalRevenue / financialDetail.totalRevenue * 100)
                                         : 0}%`
                                     }}
                                   >
                                     <span className="text-xs text-white font-bold">
-                                      {financialDetail.totalRevenue > 0 
+                                      {financialDetail.totalRevenue > 0
                                         ? ((branch.totalRevenue / financialDetail.totalRevenue) * 100).toFixed(1)
                                         : 0}%
                                     </span>
@@ -2691,13 +2688,13 @@ export function ComprehensiveReports() {
                                 <div className="flex justify-between items-center mb-2">
                                   <span className="text-sm font-medium text-gray-700">Kontribusi Profit terhadap Total Bisnis:</span>
                                   <span className={`text-lg font-bold ${branch.netProfit >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                                    {financialDetail.netProfit > 0 
+                                    {financialDetail.netProfit > 0
                                       ? ((branch.netProfit / financialDetail.netProfit) * 100).toFixed(1)
                                       : 0}%
                                   </span>
                                 </div>
                                 <div className="bg-gray-200 rounded-full h-4 overflow-hidden">
-                                  <div 
+                                  <div
                                     className={`h-4 rounded-full flex items-center justify-end px-2 transition-all duration-500 ${branch.netProfit >= 0 ? 'bg-gradient-to-r from-blue-500 to-cyan-600' : 'bg-gradient-to-r from-red-500 to-rose-600'}`}
                                     style={{
                                       width: `${financialDetail.netProfit > 0 && branch.netProfit >= 0
@@ -2706,7 +2703,7 @@ export function ComprehensiveReports() {
                                     }}
                                   >
                                     <span className="text-xs text-white font-bold">
-                                      {financialDetail.netProfit > 0 
+                                      {financialDetail.netProfit > 0
                                         ? ((branch.netProfit / financialDetail.netProfit) * 100).toFixed(1)
                                         : 0}%
                                     </span>
@@ -2722,16 +2719,16 @@ export function ComprehensiveReports() {
                                 <div className="flex justify-between items-center mb-2">
                                   <span className="text-sm font-medium text-gray-700">Kontribusi Transaksi:</span>
                                   <span className="text-lg font-bold text-orange-600">
-                                    {dashboardStats.totalTransactions > 0 
+                                    {dashboardStats.totalTransactions > 0
                                       ? ((branch.transactions / dashboardStats.totalTransactions) * 100).toFixed(1)
                                       : 0}%
                                   </span>
                                 </div>
                                 <div className="bg-gray-200 rounded-full h-4 overflow-hidden">
-                                  <div 
+                                  <div
                                     className="bg-gradient-to-r from-orange-500 to-amber-600 h-4 rounded-full flex items-center justify-end px-2 transition-all duration-500"
                                     style={{
-                                      width: `${dashboardStats.totalTransactions > 0 
+                                      width: `${dashboardStats.totalTransactions > 0
                                         ? (branch.transactions / dashboardStats.totalTransactions * 100)
                                         : 0}%`
                                     }}
@@ -2851,7 +2848,7 @@ export function ComprehensiveReports() {
                   <CardContent className="p-4 text-gray-900">
                     <div className="text-xs text-gray-600 mb-1">⭐ Rating Rata-rata</div>
                     <div className="text-3xl font-bold text-orange-600">
-                      {employeePerformance.length > 0 
+                      {employeePerformance.length > 0
                         ? (employeePerformance.reduce((sum, emp) => sum + emp.rating, 0) / employeePerformance.length).toFixed(1)
                         : "0.0"}
                     </div>
@@ -2881,7 +2878,7 @@ export function ComprehensiveReports() {
                     const rank = index + 1
                     const isTopPerformer = rank <= 3
                     const rankEmoji = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '👤'
-                    
+
                     return (
                       <div key={employee.name} className={`border-2 rounded-xl overflow-hidden transition-all hover:shadow-2xl ${isTopPerformer ? 'border-yellow-400 shadow-lg' : 'border-gray-300'}`}>
                         {/* Header Karyawan dengan Ranking */}
@@ -2941,7 +2938,7 @@ export function ComprehensiveReports() {
                               <div className="p-4 bg-gradient-to-br from-orange-50 to-amber-100 rounded-lg border border-orange-300">
                                 <div className="text-xs text-gray-600 mb-1">💎 Avg/Transaksi</div>
                                 <div className="text-xl font-bold text-orange-700">
-                                  Rp {employee.transactions > 0 ? (employee.revenue / employee.transactions).toLocaleString("id-ID", {maximumFractionDigits: 0}) : 0}
+                                  Rp {employee.transactions > 0 ? (employee.revenue / employee.transactions).toLocaleString("id-ID", { maximumFractionDigits: 0 }) : 0}
                                 </div>
                                 <div className="text-xs text-orange-600 mt-1">Nilai rata-rata</div>
                               </div>
@@ -2967,16 +2964,16 @@ export function ComprehensiveReports() {
                                 <div className="flex justify-between items-center mb-2">
                                   <span className="text-sm font-medium text-gray-700">Kontribusi Revenue terhadap Total Tim:</span>
                                   <span className="text-lg font-bold text-green-600">
-                                    {employeePerformance.reduce((sum, emp) => sum + emp.revenue, 0) > 0 
+                                    {employeePerformance.reduce((sum, emp) => sum + emp.revenue, 0) > 0
                                       ? ((employee.revenue / employeePerformance.reduce((sum, emp) => sum + emp.revenue, 0)) * 100).toFixed(1)
                                       : 0}%
                                   </span>
                                 </div>
                                 <div className="bg-gray-200 rounded-full h-4 overflow-hidden">
-                                  <div 
+                                  <div
                                     className="bg-gradient-to-r from-green-500 to-emerald-600 h-4 rounded-full flex items-center justify-end px-2 transition-all duration-500"
                                     style={{
-                                      width: `${employeePerformance.reduce((sum, emp) => sum + emp.revenue, 0) > 0 
+                                      width: `${employeePerformance.reduce((sum, emp) => sum + emp.revenue, 0) > 0
                                         ? (employee.revenue / employeePerformance.reduce((sum, emp) => sum + emp.revenue, 0) * 100)
                                         : 0}%`
                                     }}
@@ -2996,16 +2993,16 @@ export function ComprehensiveReports() {
                                 <div className="flex justify-between items-center mb-2">
                                   <span className="text-sm font-medium text-gray-700">Kontribusi Transaksi:</span>
                                   <span className="text-lg font-bold text-blue-600">
-                                    {employeePerformance.reduce((sum, emp) => sum + emp.transactions, 0) > 0 
+                                    {employeePerformance.reduce((sum, emp) => sum + emp.transactions, 0) > 0
                                       ? ((employee.transactions / employeePerformance.reduce((sum, emp) => sum + emp.transactions, 0)) * 100).toFixed(1)
                                       : 0}%
                                   </span>
                                 </div>
                                 <div className="bg-gray-200 rounded-full h-4 overflow-hidden">
-                                  <div 
+                                  <div
                                     className="bg-gradient-to-r from-blue-500 to-cyan-600 h-4 rounded-full flex items-center justify-end px-2 transition-all duration-500"
                                     style={{
-                                      width: `${employeePerformance.reduce((sum, emp) => sum + emp.transactions, 0) > 0 
+                                      width: `${employeePerformance.reduce((sum, emp) => sum + emp.transactions, 0) > 0
                                         ? (employee.transactions / employeePerformance.reduce((sum, emp) => sum + emp.transactions, 0) * 100)
                                         : 0}%`
                                     }}
@@ -3203,29 +3200,27 @@ export function ComprehensiveReports() {
                     {employeeAttendanceList.map((employee, index) => (
                       <Card
                         key={employee.name}
-                        className={`overflow-hidden transition-all hover:shadow-lg ${
-                          employee.currentStatus === "present"
+                        className={`overflow-hidden transition-all hover:shadow-lg ${employee.currentStatus === "present"
                             ? "border-l-4 border-green-500 bg-green-50/30"
                             : employee.currentStatus === "on-break"
                               ? "border-l-4 border-blue-500 bg-blue-50/30"
                               : employee.currentStatus === "checked-out"
                                 ? "border-l-4 border-gray-500 bg-gray-50/30"
                                 : "border-l-4 border-red-300 bg-red-50/20"
-                        }`}
+                          }`}
                       >
                         <CardContent className="p-6">
                           <div className="flex items-start justify-between mb-4">
                             <div className="flex items-center gap-4">
                               <div
-                                className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg ${
-                                  index === 0
+                                className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg ${index === 0
                                     ? "bg-gradient-to-br from-yellow-400 to-yellow-600 ring-4 ring-yellow-200"
                                     : index === 1
                                       ? "bg-gradient-to-br from-gray-400 to-gray-600 ring-4 ring-gray-200"
                                       : index === 2
                                         ? "bg-gradient-to-br from-orange-400 to-orange-600 ring-4 ring-orange-200"
                                         : "bg-gradient-to-br from-blue-500 to-indigo-600"
-                                }`}
+                                  }`}
                               >
                                 {employee.name.charAt(0).toUpperCase()}
                               </div>
@@ -3244,15 +3239,14 @@ export function ComprehensiveReports() {
                               </div>
                             </div>
                             <Badge
-                              className={`px-4 py-2 text-sm font-semibold ${
-                                employee.currentStatus === "present"
+                              className={`px-4 py-2 text-sm font-semibold ${employee.currentStatus === "present"
                                   ? "bg-green-100 text-green-800 hover:bg-green-100"
                                   : employee.currentStatus === "on-break"
                                     ? "bg-blue-100 text-blue-800 hover:bg-blue-100"
                                     : employee.currentStatus === "checked-out"
                                       ? "bg-gray-100 text-gray-800 hover:bg-gray-100"
                                       : "bg-red-100 text-red-800 hover:bg-red-100"
-                              }`}
+                                }`}
                             >
                               {employee.currentStatus === "present" && "🟢 Sedang Bekerja"}
                               {employee.currentStatus === "on-break" && "🟡 Istirahat"}
@@ -3267,9 +3261,9 @@ export function ComprehensiveReports() {
                               <div className="text-lg font-bold text-green-700">
                                 {employee.todayCheckIn
                                   ? new Date(employee.todayCheckIn).toLocaleTimeString("id-ID", {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })
                                   : "--:--"}
                               </div>
                             </div>
@@ -3279,9 +3273,9 @@ export function ComprehensiveReports() {
                               <div className="text-lg font-bold text-red-700">
                                 {employee.todayCheckOut
                                   ? new Date(employee.todayCheckOut).toLocaleTimeString("id-ID", {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })
                                   : "--:--"}
                               </div>
                             </div>
@@ -3291,12 +3285,12 @@ export function ComprehensiveReports() {
                               <div className="text-lg font-bold text-blue-700">
                                 {employee.todayWorkingHours
                                   ? (() => {
-                                      const hours = employee.todayWorkingHours
-                                      const h = Math.floor(hours)
-                                      const m = Math.floor((hours % 1) * 60)
-                                      const s = Math.floor(((hours % 1) * 60 - m) * 60)
-                                      return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
-                                    })()
+                                    const hours = employee.todayWorkingHours
+                                    const h = Math.floor(hours)
+                                    const m = Math.floor((hours % 1) * 60)
+                                    const s = Math.floor(((hours % 1) * 60 - m) * 60)
+                                    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
+                                  })()
                                   : "00:00:00"}
                               </div>
                             </div>
@@ -3306,11 +3300,11 @@ export function ComprehensiveReports() {
                               <div className="text-lg font-bold text-orange-700">
                                 {employee.todayBreakDuration
                                   ? (() => {
-                                      const mins = employee.todayBreakDuration
-                                      const h = Math.floor(mins / 60)
-                                      const m = mins % 60
-                                      return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:00`
-                                    })()
+                                    const mins = employee.todayBreakDuration
+                                    const h = Math.floor(mins / 60)
+                                    const m = mins % 60
+                                    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:00`
+                                  })()
                                   : "00:00:00"}
                               </div>
                             </div>
@@ -3414,30 +3408,27 @@ export function ComprehensiveReports() {
                         {employeeAttendanceList.map((employee, index) => (
                           <tr
                             key={employee.name}
-                            className={`border-b hover:bg-gray-50 transition-colors ${
-                              index % 2 === 0 ? "bg-white" : "bg-gray-50/50"
-                            } ${
-                              employee.currentStatus === "present"
+                            className={`border-b hover:bg-gray-50 transition-colors ${index % 2 === 0 ? "bg-white" : "bg-gray-50/50"
+                              } ${employee.currentStatus === "present"
                                 ? "border-l-4 border-green-500"
                                 : employee.currentStatus === "on-break"
                                   ? "border-l-4 border-blue-500"
                                   : employee.currentStatus === "checked-out"
                                     ? "border-l-4 border-gray-500"
                                     : "border-l-4 border-red-300"
-                            }`}
+                              }`}
                           >
                             <td className="p-3 border border-gray-200">
                               <div className="flex items-center gap-2">
                                 <span
-                                  className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
-                                    index === 0
+                                  className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${index === 0
                                       ? "bg-yellow-100 text-yellow-800"
                                       : index === 1
                                         ? "bg-gray-200 text-gray-800"
                                         : index === 2
                                           ? "bg-orange-100 text-orange-800"
                                           : "bg-blue-100 text-blue-800"
-                                  }`}
+                                    }`}
                                 >
                                   {index + 1}
                                 </span>
@@ -3447,15 +3438,14 @@ export function ComprehensiveReports() {
                             <td className="p-3 font-semibold text-gray-900 border border-gray-200">{employee.name}</td>
                             <td className="p-3 text-center border border-gray-200">
                               <Badge
-                                className={`${
-                                  employee.currentStatus === "present"
+                                className={`${employee.currentStatus === "present"
                                     ? "bg-green-100 text-green-800"
                                     : employee.currentStatus === "on-break"
                                       ? "bg-blue-100 text-blue-800"
                                       : employee.currentStatus === "checked-out"
                                         ? "bg-gray-100 text-gray-800"
                                         : "bg-red-100 text-red-800"
-                                }`}
+                                  }`}
                               >
                                 {employee.currentStatus === "present" && "🟢 Bekerja"}
                                 {employee.currentStatus === "on-break" && "🟡 Break"}
@@ -3466,40 +3456,40 @@ export function ComprehensiveReports() {
                             <td className="p-3 text-center font-mono text-green-700 font-semibold border border-gray-200">
                               {employee.todayCheckIn
                                 ? new Date(employee.todayCheckIn).toLocaleTimeString("id-ID", {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                    second: "2-digit",
-                                  })
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  second: "2-digit",
+                                })
                                 : "--:--:--"}
                             </td>
                             <td className="p-3 text-center font-mono text-red-700 font-semibold border border-gray-200">
                               {employee.todayCheckOut
                                 ? new Date(employee.todayCheckOut).toLocaleTimeString("id-ID", {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                    second: "2-digit",
-                                  })
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  second: "2-digit",
+                                })
                                 : "--:--:--"}
                             </td>
                             <td className="p-3 text-center font-mono text-blue-700 font-bold border border-gray-200">
                               {employee.todayWorkingHours
                                 ? (() => {
-                                    const hours = employee.todayWorkingHours
-                                    const h = Math.floor(hours)
-                                    const m = Math.floor((hours % 1) * 60)
-                                    const s = Math.floor(((hours % 1) * 60 - m) * 60)
-                                    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
-                                  })()
+                                  const hours = employee.todayWorkingHours
+                                  const h = Math.floor(hours)
+                                  const m = Math.floor((hours % 1) * 60)
+                                  const s = Math.floor(((hours % 1) * 60 - m) * 60)
+                                  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
+                                })()
                                 : "00:00:00"}
                             </td>
                             <td className="p-3 text-center font-mono text-orange-700 font-semibold border border-gray-200">
                               {employee.todayBreakDuration
                                 ? (() => {
-                                    const mins = employee.todayBreakDuration
-                                    const h = Math.floor(mins / 60)
-                                    const m = mins % 60
-                                    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:00`
-                                  })()
+                                  const mins = employee.todayBreakDuration
+                                  const h = Math.floor(mins / 60)
+                                  const m = mins % 60
+                                  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:00`
+                                })()
                                 : "00:00:00"}
                             </td>
                             <td className="p-3 text-center font-mono text-indigo-700 font-bold text-lg border border-gray-200">

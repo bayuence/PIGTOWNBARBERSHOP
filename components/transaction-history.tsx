@@ -275,6 +275,7 @@ export function TransactionHistory() {
             service_category,
             quantity,
             unit_price,
+            cost_price,
             total_price,
             barber_id,
             commission_status,
