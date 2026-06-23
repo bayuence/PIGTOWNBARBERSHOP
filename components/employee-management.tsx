@@ -931,7 +931,7 @@ function EmployeeManagement() {
             <Dialog open={!!selectedEmployeeForPresensi} onOpenChange={(open) => !open && setSelectedEmployeeForPresensi(null)}>
                 <DialogContent className="w-[95vw] max-w-[95vw] h-[93vh] max-h-[93vh] overflow-hidden flex flex-col p-0 rounded-2xl border border-gray-200 bg-white shadow-2xl">
                     <DialogTitle className="sr-only">Presensi Karyawan</DialogTitle>
-                    <div className="flex-1 overflow-y-auto p-4 md:p-6">
+                    <div className="flex-1 overflow-hidden flex flex-col">
                         {selectedEmployeeForPresensi && <KontrolPresensi employees={[selectedEmployeeForPresensi]} />}
                     </div>
                 </DialogContent>
