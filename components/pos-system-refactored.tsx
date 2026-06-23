@@ -333,7 +333,7 @@ export function POSSystem() {
             commission_amount: 0,
           }
 
-          if (item.service.type === 'service') {
+          if (item.service.type === 'service' || item.service.type === 'product') {
             console.log('🔍 Checking commission for:', {
               service_id: item.service.id,
               service_name: item.service.name,
@@ -366,19 +366,22 @@ export function POSSystem() {
 
               console.log('✅ Commission applied:', commissionData);
             } else {
-              commissionData.commission_status = 'pending_rule'
-              console.log('⚠️ No commission rule found - status set to pending_rule');
+              commissionData.commission_status = item.service.type === 'service' ? 'pending_rule' : 'no_commission'
+              console.log('⚠️ No commission rule found - status set to', commissionData.commission_status);
             }
           }
 
           return {
             transaction_id: transaction.id,
             service_id: Number(item.service.id),
+            service_name: item.service.name,
+            service_type: item.service.type,
+            service_category: (item.service as any).category || undefined,
             quantity: item.quantity,
             unit_price: item.service.price,
             cost_price: item.service.type === 'product' ? Number(item.service.cost_price || 0) : 0,
             total_price: item.service.price * item.quantity,
-            barber_id: item.service.type === 'service' && checkoutData.servingEmployee ? Number(checkoutData.servingEmployee) : undefined,
+            barber_id: checkoutData.servingEmployee ? Number(checkoutData.servingEmployee) : undefined,
             ...commissionData,
           }
         })

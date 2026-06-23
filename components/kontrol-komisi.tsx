@@ -165,7 +165,6 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
             const { data: servicesData, error: servicesError } = await supabase
                 .from('services')
                 .select('*')
-                .eq('type', 'service')
                 .order('name');
 
             if (servicesError) throw servicesError;
@@ -766,7 +765,7 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                                                         variant={status.configuredServices === status.totalServices ? "default" : "destructive"}
                                                         className="text-xs"
                                                     >
-                                                        {status.configuredServices}/{status.totalServices} Layanan
+                                                        {status.configuredServices}/{status.totalServices} Item
                                                     </Badge>
                                                 </div>
                                             </div>
@@ -802,7 +801,12 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                                                             className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg"
                                                         >
                                                             <div className="flex-1">
-                                                                <p className="font-medium text-sm text-gray-800">{service?.name}</p>
+                                                                <p className="font-medium text-sm text-gray-800">
+                                                                    {service?.type === 'product' && (
+                                                                        <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded mr-1.5">Produk</span>
+                                                                    )}
+                                                                    {service?.name}
+                                                                </p>
                                                                 <p className="text-xs text-gray-600">
                                                                     {commission.commission_type === 'percentage' 
                                                                         ? `${commission.commission_value}%`
@@ -835,12 +839,12 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                                         </div>
                                     )}
 
-                                    {/* Layanan yang belum diatur */}
+                                    {/* Layanan & Produk yang belum diatur */}
                                     {status.notConfiguredServices > 0 && (
                                         <div>
                                             <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                                                 <AlertTriangle className="h-4 w-4 text-red-600" />
-                                                Belum Diatur ({status.notConfiguredServices} Layanan)
+                                                Belum Diatur ({status.notConfiguredServices} Item)
                                             </p>
                                             <div className="flex flex-col gap-2">
                                                 <div className="flex items-center gap-2">
@@ -854,7 +858,7 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                                                     </Button>
                                                 </div>
                                                 <p className="text-xs text-gray-500">
-                                                    {status.missingServices.map(s => s.name).join(', ')}
+                                                    {status.missingServices.map(s => `${s.type === 'product' ? '[Produk] ' : ''}${s.name}`).join(', ')}
                                                 </p>
                                             </div>
                                         </div>
@@ -1083,14 +1087,14 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                   {/* Content */}
                   <div className="flex-1 overflow-y-auto p-6 space-y-5">
                     <div className="space-y-2">
-                        <Label className="text-sm font-semibold text-gray-700">Pilih Layanan</Label>
+                        <Label className="text-sm font-semibold text-gray-700">Pilih Layanan / Produk</Label>
                         <Select
                             value={selectedService}
                             onValueChange={setSelectedService}
                             disabled={editMode}
                         >
                             <SelectTrigger className="h-11 rounded-xl border-gray-200">
-                                <SelectValue placeholder="Pilih layanan..." />
+                                <SelectValue placeholder="Pilih layanan atau produk..." />
                             </SelectTrigger>
                             <SelectContent>
                                 {editMode ? (
@@ -1098,7 +1102,7 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                                         .filter((s: any) => s.id === selectedService)
                                         .map((service: any) => (
                                             <SelectItem key={service.id} value={service.id}>
-                                                {service.name} - {formatRupiah(service.price)}
+                                                [{service.type === 'product' ? 'Produk' : 'Layanan'}] {service.name} - {formatRupiah(service.price)}
                                             </SelectItem>
                                         ))
                                 ) : (
@@ -1107,7 +1111,7 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                                             .find((s: any) => s.employee.id === selectedEmployee.id)
                                             ?.missingServices.map((service: any) => (
                                                 <SelectItem key={service.id} value={service.id}>
-                                                    {service.name} - {formatRupiah(service.price)}
+                                                    [{service.type === 'product' ? 'Produk' : 'Layanan'}] {service.name} - {formatRupiah(service.price)}
                                                 </SelectItem>
                                             ))
                                 )}

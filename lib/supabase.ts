@@ -364,8 +364,12 @@ export async function getTransactionById(id: string) {
 export async function createTransactionItems(items: Array<{
   transaction_id: string
   service_id: number // Changed from string to number (INTEGER in database)
+  service_name?: string
+  service_type?: string
+  service_category?: string
   quantity: number
   unit_price: number
+  cost_price?: number
   total_price: number
   commission_status?: string
   commission_type?: string
