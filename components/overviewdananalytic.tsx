@@ -226,10 +226,102 @@ export function OverviewAndAnalytics({ onRefreshData, realTimeEnabled }: Overvie
         }
       }).sort((a: any, b: any) => b.revenue - a.revenue)
 
-      setBranchPerformance(branchPerf); // ✅ Sekarang sudah didefinisikan
+      // Fetch transaction_items untuk hitung komisi dan modal produk
+      const txIds = completedTransactions.map((t: any) => t.id)
+      let totalCommissions = 0
+      let totalProductCost = 0
+      // Map transaction_id -> branch_id and server_id for branch-level breakdown
+      const txBranchMap: Record<string, string> = {}
+      const txServerMap: Record<string, string> = {}
+      completedTransactions.forEach((t: any) => {
+        txBranchMap[t.id] = t.branch_id
+        if (t.server_id) txServerMap[t.id] = String(t.server_id)
+      })
+      const branchCommissionMap: Record<string, number> = {}
+      const branchProductCostMap: Record<string, number> = {}
 
-      const netProfit = totalRevenue - totalExpenses
-      const monthlyNetProfit = monthlyRevenue - monthlyExpenses
+      if (txIds.length > 0) {
+        const { data: txItemsRaw } = await supabase
+          .from("transaction_items")
+          .select("transaction_id, service_id, service_name, service_type, quantity, unit_price, cost_price, commission_amount, commission_status, barber_id")
+          .in("transaction_id", txIds)
+
+        if (txItemsRaw && txItemsRaw.length > 0) {
+          // Enrich service info for old transactions (service_name/type/cost_price = null)
+          const missingServiceIds = [...new Set(
+            txItemsRaw.filter((i: any) => (!i.service_type || !i.cost_price || Number(i.cost_price) === 0) && i.service_id)
+              .map((i: any) => i.service_id)
+          )]
+          let svcMap: Record<string, any> = {}
+          if (missingServiceIds.length > 0) {
+            const { data: svcs } = await supabase
+              .from('services').select('id, name, type, cost_price').in('id', missingServiceIds)
+            svcs?.forEach((s: any) => { svcMap[String(s.id)] = s })
+          }
+
+          // Enrich commission for old transactions (commission_amount = 0)
+          const allBarberIds = [...new Set([
+            ...txItemsRaw.filter((i: any) => i.barber_id).map((i: any) => String(i.barber_id)),
+            ...Object.values(txServerMap)
+          ])]
+          let rulesMap: Record<string, any> = {}
+          if (allBarberIds.length > 0) {
+            const { data: rules } = await supabase
+              .from('commission_rules').select('user_id, service_id, commission_type, commission_value')
+              .in('user_id', allBarberIds)
+            rules?.forEach((r: any) => { rulesMap[`${r.user_id}_${r.service_id}`] = r })
+          }
+
+          txItemsRaw.forEach((item: any) => {
+            const branchId = txBranchMap[item.transaction_id]
+            if (!branchId) return
+
+            const svc = svcMap[String(item.service_id)]
+            const resolvedType = item.service_type || svc?.type || 'service'
+            const resolvedCost = (Number(item.cost_price) > 0)
+              ? Number(item.cost_price)
+              : (resolvedType === 'product' ? Number(svc?.cost_price || 0) : 0)
+
+            // Resolve commission: prefer DB value, fallback to live rule
+            let commission = Number(item.commission_amount || 0)
+            if (commission === 0) {
+              const lookupId = item.barber_id ? String(item.barber_id) : txServerMap[item.transaction_id]
+              if (lookupId) {
+                const rule = rulesMap[`${lookupId}_${item.service_id}`]
+                if (rule) {
+                  const qty = Number(item.quantity || 1)
+                  commission = rule.commission_type === 'percentage'
+                    ? (Number(item.unit_price) * rule.commission_value / 100) * qty
+                    : Number(rule.commission_value) * qty
+                }
+              }
+            }
+
+            const isProduct = resolvedType === 'product' || resolvedCost > 0
+            const productCost = isProduct ? resolvedCost * Number(item.quantity || 1) : 0
+
+            totalCommissions += commission
+            totalProductCost += productCost
+            branchCommissionMap[branchId] = (branchCommissionMap[branchId] || 0) + commission
+            branchProductCostMap[branchId] = (branchProductCostMap[branchId] || 0) + productCost
+          })
+        }
+      }
+
+      // Update branchPerf with accurate profit (deduct commission + product cost)
+      const branchPerfAccurate = branchPerf.map((b: any) => {
+        const commission = branchCommissionMap[b.id] || 0
+        const productCost = branchProductCostMap[b.id] || 0
+        const accurateProfit = b.revenue - b.expense - commission - productCost
+        return { ...b, commission, productCost, profit: accurateProfit }
+      })
+      setBranchPerformance(branchPerfAccurate)
+
+      const netProfit = totalRevenue - totalExpenses - totalCommissions - totalProductCost
+      // Monthly net profit — proportional deduction based on monthly revenue ratio
+      const monthlyCommissions = totalRevenue > 0 ? (monthlyRevenue / totalRevenue) * totalCommissions : 0
+      const monthlyProductCost = totalRevenue > 0 ? (monthlyRevenue / totalRevenue) * totalProductCost : 0
+      const monthlyNetProfit = monthlyRevenue - monthlyExpenses - monthlyCommissions - monthlyProductCost
       const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0
 
       // Data untuk grafik garis 7 hari terakhir
@@ -250,8 +342,11 @@ export function OverviewAndAnalytics({ onRefreshData, realTimeEnabled }: Overvie
             return expenseDate.toISOString().split('T')[0] === dateStr
           })
           .reduce((sum: number, expense: any) => sum + expense.amount, 0)
-        
-        const dayNetProfit = dayRevenue - dayExpenses
+
+        // Proportional daily commission and product cost based on revenue ratio
+        const dayCommission = totalRevenue > 0 ? (dayRevenue / totalRevenue) * totalCommissions : 0
+        const dayProductCost = totalRevenue > 0 ? (dayRevenue / totalRevenue) * totalProductCost : 0
+        const dayNetProfit = dayRevenue - dayExpenses - dayCommission - dayProductCost
         
         return {
           date: date.toLocaleDateString("id-ID", { day: '2-digit', month: 'short' }),
@@ -268,6 +363,8 @@ export function OverviewAndAnalytics({ onRefreshData, realTimeEnabled }: Overvie
         monthlyTransactions: monthlyTransactions.length,
         totalExpenses,
         monthlyExpenses,
+        totalCommissions,
+        totalProductCost,
         netProfit,
         monthlyNetProfit,
         profitMargin
@@ -276,6 +373,8 @@ export function OverviewAndAnalytics({ onRefreshData, realTimeEnabled }: Overvie
       console.log('📊 Dashboard Stats:', {
         revenue: totalRevenue,
         expenses: totalExpenses,
+        commissions: totalCommissions,
+        productCost: totalProductCost,
         profit: netProfit,
         transactions: completedTransactions.length,
         branches: branchPerf.length
@@ -360,25 +459,43 @@ export function OverviewAndAnalytics({ onRefreshData, realTimeEnabled }: Overvie
       const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
 
       // Fetch transaction items untuk komisi (gunakan barber_id, bukan employee_id)
-      // PENTING: Ambil semua commission_status untuk tracking
       const { data: transactionItems, error: itemsError } = await supabase
         .from("transaction_items")
-        .select("barber_id, commission_amount, commission_status, created_at")
+        .select("barber_id, service_id, commission_amount, commission_status, unit_price, quantity, created_at, transaction_id")
 
       if (itemsError) {
         console.log('⚠️ Transaction items error:', itemsError.message)
       }
 
-      const allTransactionItems = transactionItems || []
-      
-      // Log breakdown commission status
-      const commissionBreakdown = {
-        total: allTransactionItems.length,
-        credited: allTransactionItems.filter(i => i.commission_status === 'credited').length,
-        pending: allTransactionItems.filter(i => i.commission_status === 'pending').length,
-        no_commission: allTransactionItems.filter(i => i.commission_status === 'no_commission').length
+      // Also fetch transactions to get server_id as fallback for barber_id
+      const { data: allTransactions } = await supabase
+        .from("transactions")
+        .select("id, server_id, cashier_id")
+        .eq("payment_status", "completed")
+
+      const txServerLookup: Record<string, string> = {}
+      allTransactions?.forEach((t: any) => {
+        if (t.server_id) txServerLookup[t.id] = String(t.server_id)
+      })
+
+      const allTransactionItems = (transactionItems || []).map((item: any) => ({
+        ...item,
+        // If barber_id is null, fallback to server_id from transaction
+        resolvedBarberId: item.barber_id ? String(item.barber_id) : (txServerLookup[item.transaction_id] || null)
+      }))
+
+      // Fetch commission rules for all employees to enrich old transactions
+      const allEmployeeIds = employees.map((e: any) => String(e.id))
+      let commissionRulesMap: Record<string, any> = {}
+      if (allEmployeeIds.length > 0) {
+        const { data: rulesData } = await supabase
+          .from('commission_rules')
+          .select('user_id, service_id, commission_type, commission_value')
+          .in('user_id', allEmployeeIds)
+        rulesData?.forEach((r: any) => {
+          commissionRulesMap[`${r.user_id}_${r.service_id}`] = r
+        })
       }
-      console.log('✅ Transaction items loaded:', commissionBreakdown)
 
       // Debug: Log all employee IDs untuk compare dengan attendance
       console.log('👥 Total Employees:', employees.length, '| Sample:', employees.slice(0, 3).map(e => ({ id: e.id, name: e.name })))
@@ -399,21 +516,31 @@ export function OverviewAndAnalytics({ onRefreshData, realTimeEnabled }: Overvie
         }, 0)
 
         // Calculate total commission dari transaction_items (gunakan barber_id)
-        // Hitung commission yang sudah credited (dibayar)
-        const empCommissionItemsCredited = allTransactionItems.filter(item => 
-          item.barber_id === emp.id && 
-          item.commission_status === "credited"
-        )
-        const totalCommission = empCommissionItemsCredited.reduce((sum, item) => 
-          sum + (item.commission_amount || 0), 0
+        // Hitung commission yang sudah credited (dibayar) ATAU enrich dari commission_rules
+        const empItems = allTransactionItems.filter((item: any) =>
+          item.resolvedBarberId === String(emp.id)
         )
 
+        const totalCommission = empItems.reduce((sum: number, item: any) => {
+          let commission = Number(item.commission_amount || 0)
+          // Fallback to commission_rules if commission_amount = 0
+          if (commission === 0 && item.service_id) {
+            const rule = commissionRulesMap[`${emp.id}_${item.service_id}`]
+            if (rule) {
+              const qty = Number(item.quantity || 1)
+              commission = rule.commission_type === 'percentage'
+                ? (Number(item.unit_price) * rule.commission_value / 100) * qty
+                : Number(rule.commission_value) * qty
+            }
+          }
+          return sum + commission
+        }, 0)
+
         // Hitung commission yang masih pending (belum dibayar)
-        const empCommissionItemsPending = allTransactionItems.filter(item => 
-          item.barber_id === emp.id && 
+        const empCommissionItemsPending = empItems.filter((item: any) =>
           item.commission_status === "pending"
         )
-        const pendingCommission = empCommissionItemsPending.reduce((sum, item) => 
+        const pendingCommission = empCommissionItemsPending.reduce((sum: number, item: any) =>
           sum + (item.commission_amount || 0), 0
         )
 
@@ -476,7 +603,7 @@ export function OverviewAndAnalytics({ onRefreshData, realTimeEnabled }: Overvie
               records: empAttendance.length
             },
             commissionItems: {
-              credited: empCommissionItemsCredited.length,
+              credited: empItems.filter((i: any) => i.commission_status === 'credited').length,
               pending: empCommissionItemsPending.length
             }
           })
@@ -847,14 +974,15 @@ export function OverviewAndAnalytics({ onRefreshData, realTimeEnabled }: Overvie
                     </thead>
                     <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                       {branchPerformance.map((branch, index) => {
-                        const profitMargin = branch.revenue > 0 
-                          ? ((branch.revenue - branch.expense) / branch.revenue * 100).toFixed(1)
+                        // Use accurate profit from branchPerfAccurate (includes commission + product cost deduction)
+                        const netProfit = branch.profit
+                        const isProfitable = netProfit >= 0;
+                        const profitMargin = branch.revenue > 0
+                          ? (netProfit / branch.revenue * 100).toFixed(1)
                           : '0';
-                        const avgPerTransaction = branch.revenue > 0 && branch.revenue > 0
-                          ? branch.revenue / Math.max(1, Math.round(branch.revenue / 50000)) // estimasi jumlah transaksi
+                        const avgPerTransaction = branch.revenue > 0
+                          ? branch.revenue / Math.max(1, Math.round(branch.revenue / 50000))
                           : 0;
-                        const netProfit = branch.revenue - branch.expense;
-                        const isProfitable = netProfit > 0;
                         
                         return (
                           <tr 
@@ -1014,7 +1142,7 @@ export function OverviewAndAnalytics({ onRefreshData, realTimeEnabled }: Overvie
                     </p>
                   </div>
                   <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                    {formatRupiah(branchPerformance.reduce((sum, b) => sum + (b.revenue - b.expense), 0))}
+                    {formatRupiah(branchPerformance.reduce((sum, b) => sum + b.profit, 0))}
                   </p>
                   <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
                     Profit keseluruhan

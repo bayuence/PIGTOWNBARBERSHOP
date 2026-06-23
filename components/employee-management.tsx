@@ -308,7 +308,7 @@ function EmployeeManagement() {
     const activeEmployees = employees.filter((e) => e.status !== "inactive").length
     const totalSalary = employees.reduce((sum, emp) => {
         const stats = employeeStats[emp.id]
-        const baseSalary = emp.salary || 3000000
+        const baseSalary = emp.salary || stats?.baseSalary || 0
         const commission = stats?.totalCommission || 0
         return sum + baseSalary + commission
     }, 0)
@@ -841,7 +841,7 @@ function EmployeeManagement() {
                                         <div className="space-y-1.5 md:space-y-2 text-xs md:text-sm">
                                             <div className="flex items-center gap-2">
                                                 <Mail className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                                                <span className="truncate">{employee.email || "N/A"}</span>
+                                                <span className="truncate">{employee.email || "Belum diisi"}</span>
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <Phone className="h-3 w-3 text-muted-foreground flex-shrink-0" />
@@ -864,7 +864,7 @@ function EmployeeManagement() {
                                             </div>
                                             <div>
                                                 <p className="text-muted-foreground text-[10px] md:text-xs">Gaji Pokok</p>
-                                                <p className="font-medium text-xs md:text-sm truncate">{formatRupiah(employee.salary || 0)}</p>
+                                                <p className="font-medium text-xs md:text-sm truncate">{formatRupiah(employee.salary || stats.baseSalary || 0)}</p>
                                             </div>
                                         </div>
 

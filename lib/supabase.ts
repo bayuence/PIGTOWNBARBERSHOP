@@ -1087,17 +1087,58 @@ export async function getAbsentEmployeesToday(branchId?: string) {
 
 export async function getEmployeeStats(userId: string) {
   try {
-    const { data: items } = await supabase
+    // Query 1: items where barber_id matches (new transactions)
+    const { data: itemsByBarber } = await supabase
       .from('transaction_items')
-      .select('unit_price, quantity, commission_amount')
+      .select('unit_price, quantity, commission_amount, service_id, transaction_id')
       .eq('barber_id', userId)
-      
-    const totalTransactions = items?.length || 0
+
+    // Query 2: items from transactions where server_id matches but barber_id is null (old transactions)
+    const { data: txByServer } = await supabase
+      .from('transactions')
+      .select('id')
+      .eq('server_id', userId)
+      .eq('payment_status', 'completed')
+
+    const serverTxIds = txByServer?.map(t => t.id) || []
+    let itemsByServer: any[] = []
+    if (serverTxIds.length > 0) {
+      const { data } = await supabase
+        .from('transaction_items')
+        .select('unit_price, quantity, commission_amount, service_id, transaction_id')
+        .in('transaction_id', serverTxIds)
+        .is('barber_id', null) // only items not already attributed to a barber
+      itemsByServer = data || []
+    }
+
+    // Merge — avoid duplicates
+    const barberTxIds = new Set((itemsByBarber || []).map((i: any) => i.transaction_id))
+    const serverOnlyItems = itemsByServer.filter(i => !barberTxIds.has(i.transaction_id))
+    const allItems = [...(itemsByBarber || []), ...serverOnlyItems]
+
+    // Fetch commission rules for fallback
+    const { data: rules } = await supabase
+      .from('commission_rules')
+      .select('service_id, commission_type, commission_value')
+      .eq('user_id', userId)
+    const rulesMap: Record<string, any> = {}
+    rules?.forEach((r: any) => { rulesMap[String(r.service_id)] = r })
+
+    const totalTransactions = new Set(allItems.map((i: any) => i.transaction_id)).size
     let totalRevenue = 0
     let totalCommission = 0
-    items?.forEach(item => {
+    allItems.forEach((item: any) => {
       totalRevenue += (Number(item.unit_price) * Number(item.quantity)) || 0
-      totalCommission += Number(item.commission_amount) || 0
+      let commission = Number(item.commission_amount) || 0
+      if (commission === 0 && item.service_id) {
+        const rule = rulesMap[String(item.service_id)]
+        if (rule) {
+          commission = rule.commission_type === 'percentage'
+            ? (Number(item.unit_price) * rule.commission_value / 100) * Number(item.quantity || 1)
+            : Number(rule.commission_value) * Number(item.quantity || 1)
+        }
+      }
+      totalCommission += commission
     })
     
     const { data: points } = await supabase
@@ -1112,6 +1153,15 @@ export async function getEmployeeStats(userId: string) {
       else penaltyPoints += Math.abs(p.points_earned)
     })
     
+    // Fetch base salary from employee_salaries table
+    const { data: salaryData } = await supabase
+      .from('employee_salaries')
+      .select('base_salary')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+    const baseSalary = salaryData && salaryData.length > 0 ? Number(salaryData[0].base_salary) : 0
+
     return {
       totalTransactions,
       totalRevenue,
@@ -1120,7 +1170,8 @@ export async function getEmployeeStats(userId: string) {
       bonusPoints,
       penaltyPoints,
       totalBonus: bonusPoints * 1000,
-      totalPenalty: penaltyPoints * 1000
+      totalPenalty: penaltyPoints * 1000,
+      baseSalary,
     }
   } catch (error) {
     return null
@@ -1149,10 +1200,12 @@ export async function getEmployeeAttendance(userId: string) {
       .order('date', { ascending: false })
     if (error) throw error
     
-    const presentDays = data?.filter(a => a.status === 'present').length || 0
+    const presentDays = data?.filter(a =>
+      a.status === 'present' || a.status === 'checked_in' || a.status === 'checked_out' || a.status === 'on_break'
+    ).length || 0
     const lateDays = data?.filter(a => a.status === 'late').length || 0
     const totalDays = data?.length || 0
-    const attendanceRate = totalDays > 0 ? ((presentDays + lateDays) / totalDays) * 100 : 100
+    const attendanceRate = totalDays > 0 ? ((presentDays + lateDays) / totalDays) * 100 : 0
     
     return { 
       data: data || [], 
