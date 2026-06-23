@@ -354,7 +354,7 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
     }
   }
 
-  const formatTime = (timeString: string) => {
+  const formatTime = (timeString: string | undefined) => {
     if (!timeString) return ""
     return timeString.substring(0, 5)
   }
