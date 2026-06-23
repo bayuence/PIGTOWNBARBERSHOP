@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -310,7 +310,7 @@ export function POSSystem() {
       setBluetoothConnected(true)
 
       setIsBluetoothOpen(false)
-      toast.success("Berhasil Terhubung! ðŸ“±", {
+      toast.success("Berhasil Terhubung! 📱", {
         description: `Terhubung ke printer ${device.name}`,
       })
 
@@ -450,7 +450,7 @@ export function POSSystem() {
       setTimeout(() => {
         win.print()
         win.close()
-        toast.success("Print via Browser ðŸ–¨ï¸", { description: "Struk berhasil dicetak menggunakan printer browser", duration: 4000 })
+        toast.success("Print via Browser 🖨️", { description: "Struk berhasil dicetak menggunakan printer browser", duration: 4000 })
         setIsPrinting(false)
       }, 250)
     } catch (error) {
@@ -611,7 +611,7 @@ export function POSSystem() {
       }
 
       toast.dismiss("bluetooth-print")
-      toast.success("Print via Bluetooth Berhasil! ï¿½ï¿½ðŸ–¨ï¸", {
+      toast.success("Print via Bluetooth Berhasil! 🖨️", {
         description: `Struk berhasil dicetak ke printer thermal ${bluetoothDevice.name}`,
         duration: 5000,
       })
@@ -845,7 +845,7 @@ export function POSSystem() {
           }
 
           if (item.service.type === 'service') {
-            console.log('ðŸ” Checking commission for:', {
+            console.log('🔍 Checking commission for:', {
               service_id: item.service.id,
               service_name: item.service.name,
               user_id: servingEmployee,
@@ -860,7 +860,7 @@ export function POSSystem() {
               .limit(1)
               .maybeSingle()
 
-            console.log('ðŸ“‹ Commission rule result:', { rule, ruleError });
+            console.log('📋 Commission rule result:', { rule, ruleError });
 
             if (rule) {
               const price = item.service.price
@@ -875,10 +875,10 @@ export function POSSystem() {
                 commission_amount: commissionAmount * item.quantity,
               }
 
-              console.log('âœ… Commission applied:', commissionData);
+              console.log('✅ Commission applied:', commissionData);
             } else {
               commissionData.commission_status = 'pending_rule'
-              console.log('âš ï¸ No commission rule found - status set to pending_rule');
+              console.log('⚠️ No commission rule found - status set to pending_rule');
             }
           }
 
@@ -918,7 +918,7 @@ export function POSSystem() {
         change_amount: paymentMethod === "cash" && cashAmount ? changeAmount : null
       })
 
-      // ðŸ”¥ BROADCAST EVENT KE SEMUA KOMPONEN
+      // 🔥 BROADCAST EVENT KE SEMUA KOMPONEN
       await broadcastTransactionEvent('transaction_created', {
         transaction_id: savedTransaction.id,
         branch_id: selectedBranchData.id,
@@ -938,7 +938,7 @@ export function POSSystem() {
       setChangeAmount(0)
 
       toast.dismiss("checkout-loading")
-      toast.success("Transaksi Berhasil! ðŸŽ‰", {
+      toast.success("Transaksi Berhasil! 🎉", {
         description: `Transaksi #${savedTransaction.receipt_number} berhasil diproses`,
         duration: 5000,
       })
@@ -1024,23 +1024,25 @@ export function POSSystem() {
               </Button>
               <Button
                 variant={selectedType === "service" ? "default" : "outline"}
-                className={`flex-1 ${selectedType === "service" ? "" : "bg-transparent"}`}
+                className={`flex-1 gap-2 ${selectedType === "service" ? "" : "bg-transparent"}`}
                 onClick={() => {
                   setSelectedType("service")
                   setSelectedCategory("semua")
                 }}
               >
-                ðŸ’ˆ Layanan
+                <Scissors className="h-4 w-4" />
+                Layanan
               </Button>
               <Button
                 variant={selectedType === "product" ? "default" : "outline"}
-                className={`flex-1 ${selectedType === "product" ? "" : "bg-transparent"}`}
+                className={`flex-1 gap-2 ${selectedType === "product" ? "" : "bg-transparent"}`}
                 onClick={() => {
                   setSelectedType("product")
                   setSelectedCategory("semua")
                 }}
               >
-                ðŸ“¦ Produk
+                <Package className="h-4 w-4" />
+                Produk
               </Button>
             </div>
 
@@ -1102,7 +1104,7 @@ export function POSSystem() {
                       }`}
                     onClick={() => { if (!isOutOfStock) addToCart(service) }}
                   >
-                    {/* â”€â”€ Image â”€â”€ */}
+                    {/* ── Image ── */}
                     <div className="relative w-full bg-gray-100 overflow-hidden" style={{ paddingBottom: '75%' }}>
                       {service.image_url ? (
                         <img
@@ -1136,7 +1138,7 @@ export function POSSystem() {
                       <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-black/20 to-transparent" />
                     </div>
 
-                    {/* â”€â”€ Info â”€â”€ */}
+                    {/* ── Info ── */}
                     <div className="flex flex-col p-2.5 gap-1 flex-1">
                       <h3 className="text-xs font-bold text-gray-800 leading-tight line-clamp-2 uppercase tracking-wide">
                         {service.name}
@@ -1205,7 +1207,7 @@ export function POSSystem() {
               <ShoppingCart className="h-5 w-5" /> Keranjang
             </DialogTitle>
             <DialogDescription>
-              {cart.length} item{cart.length !== 1 ? "s" : ""} â€¢ {getTotalDuration()} menit
+              {cart.length} item{cart.length !== 1 ? "s" : ""} • {getTotalDuration()} menit
             </DialogDescription>
           </DialogHeader>
 
@@ -1314,7 +1316,7 @@ export function POSSystem() {
                             <span className="text-xs text-gray-500">Stok: {availableStock}</span>
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground">{formatPrice(item.service.price)} Ã— {item.quantity}</p>
+                        <p className="text-xs text-muted-foreground">{formatPrice(item.service.price)} x {item.quantity}</p>
                         {isOutOfStock && (
                           <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-1">
                             <AlertTriangle className="h-3 w-3" /> Stok habis!

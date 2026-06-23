@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -132,7 +132,7 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
             .on('postgres_changes', 
                 { event: '*', schema: 'public', table: 'transaction_items' },
                 (payload) => {
-                    console.log('ðŸ“¡ Transaction change detected, reloading...');
+                    console.log('📡 Transaction change detected, reloading...');
                     loadData();
                 }
             )
@@ -143,7 +143,7 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
             .on('postgres_changes',
                 { event: '*', schema: 'public', table: 'commission_rules' },
                 (payload) => {
-                    console.log('ðŸ“¡ Commission rule change detected, reloading...');
+                    console.log('📡 Commission rule change detected, reloading...');
                     loadData();
                 }
             )
@@ -622,7 +622,7 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                                                 </div>
                                                 <p className="font-semibold text-gray-800">{transaction.barber_name}</p>
                                                 <p className="text-sm text-gray-600">
-                                                    {transaction.service_name} â€¢ {formatRupiah(transaction.unit_price)} x {transaction.quantity}
+                                                    {transaction.service_name} • {formatRupiah(transaction.unit_price)} x {transaction.quantity}
                                                 </p>
                                                 <p className="text-lg font-bold text-red-600 mt-1">
                                                     Total: {formatRupiah(transaction.unit_price * transaction.quantity)}

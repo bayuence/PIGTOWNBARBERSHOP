@@ -300,37 +300,90 @@ export function POSSystem() {
       
       // Create transaction
       const transactionData = {
-        customer_name: checkoutData.customerName,
+        customer_name: checkoutData.customerName || undefined,
         branch_id: branch.id,
-        cashier_id: currentUser?.id || null,
-        server_id: checkoutData.servingEmployee || null,
+        cashier_id: currentUser?.id ? Number(currentUser.id) : undefined,
+        server_id: checkoutData.servingEmployee ? Number(checkoutData.servingEmployee) : undefined,
         payment_method: checkoutData.paymentMethod,
         payment_status: "completed" as const,
+        subtotal: subtotal,
         total_amount: total,
         discount_amount: discountAmount,
-        notes: checkoutData.discountReason || null,
+        notes: checkoutData.discountReason || undefined,
         cashier_name: currentUser?.name || null,
-        server_name: employees.find(e => e.id === checkoutData.servingEmployee)?.name || null,
+        server_name: employees.find(e => String(e.id) === String(checkoutData.servingEmployee))?.name || null,
         branch_name: branch.name
       }
       
       const { data: transaction, error: transactionError } = await createTransaction(transactionData)
       if (transactionError) throw transactionError
       
-      // Create transaction items
-      const items = cart.map(item => ({
-        transaction_id: transaction.id,
-        service_id: item.service.id,
-        service_name: item.service.name,
-        service_type: item.service.type,
-        service_category: item.service.service_categories?.name || null,
-        quantity: item.quantity,
-        unit_price: item.service.price,
-        total_price: item.service.price * item.quantity,
-        barber_id: checkoutData.servingEmployee || null
-      }))
+      // Create transaction items with commissions
+      const transactionItemsWithCommission = await Promise.all(
+        cart.map(async (item) => {
+          let commissionData: {
+            commission_status: string
+            commission_type: string | undefined
+            commission_value: number | undefined
+            commission_amount: number
+          } = {
+            commission_status: 'no_commission',
+            commission_type: undefined,
+            commission_value: undefined,
+            commission_amount: 0,
+          }
+
+          if (item.service.type === 'service') {
+            console.log('🔍 Checking commission for:', {
+              service_id: item.service.id,
+              service_name: item.service.name,
+              user_id: checkoutData.servingEmployee,
+              employee_name: employees.find(e => String(e.id) === String(checkoutData.servingEmployee))?.name
+            });
+
+            const { data: rule, error: ruleError } = await supabase
+              .from('commission_rules')
+              .select('commission_type, commission_value')
+              .eq('service_id', item.service.id)
+              .eq('user_id', checkoutData.servingEmployee)
+              .limit(1)
+              .maybeSingle()
+
+            console.log('📋 Commission rule result:', { rule, ruleError });
+
+            if (rule) {
+              const price = item.service.price
+              const commissionAmount = rule.commission_type === 'percentage'
+                ? price * (Number(rule.commission_value) / 100)
+                : Number(rule.commission_value)
+
+              commissionData = {
+                commission_status: 'credited',
+                commission_type: rule.commission_type ?? undefined,
+                commission_value: Number(rule.commission_value),
+                commission_amount: commissionAmount * item.quantity,
+              }
+
+              console.log('✅ Commission applied:', commissionData);
+            } else {
+              commissionData.commission_status = 'pending_rule'
+              console.log('⚠️ No commission rule found - status set to pending_rule');
+            }
+          }
+
+          return {
+            transaction_id: transaction.id,
+            service_id: Number(item.service.id),
+            quantity: item.quantity,
+            unit_price: item.service.price,
+            total_price: item.service.price * item.quantity,
+            barber_id: item.service.type === 'service' && checkoutData.servingEmployee ? Number(checkoutData.servingEmployee) : undefined,
+            ...commissionData,
+          }
+        })
+      )
       
-      const { error: itemsError } = await createTransactionItems(items)
+      const { error: itemsError } = await createTransactionItems(transactionItemsWithCommission)
       if (itemsError) throw itemsError
       
       // Reduce stock for products
