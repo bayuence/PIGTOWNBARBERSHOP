@@ -797,7 +797,7 @@ function EmployeeManagement() {
                                                     <AvatarFallback className="bg-primary/10 text-primary text-xs md:text-sm">
                                                         {employee.name
                                                             .split(" ")
-                                                            .map((n) => n[0])
+                                                            .map((n: string) => n[0])
                                                             .join("")
                                                             .toUpperCase()}
                                                     </AvatarFallback>
@@ -922,9 +922,11 @@ function EmployeeManagement() {
 
             {/* Modals for Specific Employee Actions */}
             <Dialog open={!!selectedEmployeeForKomisi} onOpenChange={(open) => !open && setSelectedEmployeeForKomisi(null)}>
-                <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto w-11/12 p-0 border-none bg-transparent shadow-none">
+                <DialogContent className="w-[95vw] max-w-[95vw] h-[93vh] max-h-[93vh] overflow-hidden flex flex-col p-0 rounded-2xl border border-gray-200 bg-white shadow-2xl">
                     <DialogTitle className="sr-only">Komisi Karyawan</DialogTitle>
-                    {selectedEmployeeForKomisi && <KontrolKomisi employees={[selectedEmployeeForKomisi]} />}
+                    <div className="flex-1 overflow-hidden flex flex-col">
+                        {selectedEmployeeForKomisi && <KontrolKomisi employees={[selectedEmployeeForKomisi]} />}
+                    </div>
                 </DialogContent>
             </Dialog>
 
@@ -938,9 +940,11 @@ function EmployeeManagement() {
             </Dialog>
 
             <Dialog open={!!selectedEmployeeForGaji} onOpenChange={(open) => !open && setSelectedEmployeeForGaji(null)}>
-                <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto w-11/12 p-0 border-none bg-transparent shadow-none">
+                <DialogContent className="w-[95vw] max-w-[95vw] h-[93vh] max-h-[93vh] overflow-hidden flex flex-col p-0 rounded-2xl border border-gray-200 bg-white shadow-2xl">
                     <DialogTitle className="sr-only">Penggajian Karyawan</DialogTitle>
-                    {selectedEmployeeForGaji && <KontrolGaji employees={[selectedEmployeeForGaji]} employeeStats={{[selectedEmployeeForGaji.id]: employeeStats[selectedEmployeeForGaji.id]}} />}
+                    <div className="flex-1 overflow-hidden flex flex-col">
+                        {selectedEmployeeForGaji && <KontrolGaji employees={[selectedEmployeeForGaji]} employeeStats={{[selectedEmployeeForGaji.id]: employeeStats[selectedEmployeeForGaji.id]}} />}
+                    </div>
                 </DialogContent>
             </Dialog>
 

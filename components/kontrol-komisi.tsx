@@ -45,7 +45,7 @@ const parseNominal = (value: string): number => {
 interface Employee {
     id: string;
     name: string;
-    email: string;
+    email?: string;
     position?: string;
 }
 
@@ -99,6 +99,7 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
     const [employeeStatuses, setEmployeeStatuses] = useState<EmployeeCommissionStatus[]>([]);
     const [transactions, setTransactions] = useState<TransactionItem[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
+    const [activeTab, setActiveTab] = useState<'transactions' | 'manage' | 'status' | 'overview'>('transactions');
     
     // Dialog states
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -506,7 +507,7 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
 
     const filteredStatuses = employeeStatuses.filter(status => 
         status.employee.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        status.employee.email.toLowerCase().includes(searchQuery.toLowerCase())
+        (status.employee.email?.toLowerCase() || "").includes(searchQuery.toLowerCase())
     );
 
     const pendingTransactions = transactions.filter(t => !t.commission_value);
@@ -528,268 +529,320 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
 
     if (loading && employeeStatuses.length === 0) {
         return (
-            <div className="w-full">
-                <Card className="border-0 shadow-lg rounded-xl overflow-hidden">
-                    <CardContent className="p-12 text-center">
-                        <Loader2 className="h-12 w-12 animate-spin mx-auto text-red-600 mb-4" />
-                        <p className="text-gray-600">Memuat data komisi...</p>
-                    </CardContent>
-                </Card>
+            <div className="flex-1 flex flex-col justify-center items-center p-8 bg-slate-50/50">
+                <Loader2 className="h-12 w-12 animate-spin text-red-600 mb-4" />
+                <p className="text-gray-600 font-medium">Memuat data komisi...</p>
             </div>
         );
     }
 
+    const isSingleEmployee = employees.length === 1;
+    const employee = isSingleEmployee ? employees[0] : null;
+
     return (
-        <div className="w-full">
-            <Card className="border-0 shadow-lg rounded-xl overflow-hidden">
-                <CardHeader className="bg-gradient-to-r from-red-600 to-orange-600 text-white p-6 pr-12">
-                    <div className="flex items-center justify-between">
+        <div className="flex flex-col h-full bg-slate-50/50">
+            {/* 1. COMPACT MODAL HEADER */}
+            <div className="flex-shrink-0 bg-gradient-to-r from-red-700 to-red-600 text-white px-6 py-5 flex items-center justify-between border-b border-red-800">
+                {employee ? (
+                    <div className="flex items-center gap-4">
+                        <Avatar className="h-12 w-12 border-2 border-white/20">
+                            <AvatarFallback className="bg-red-800 text-white font-bold">
+                                {employee.name ? employee.name.split(" ").map((n: string) => n[0]).join("") : "KM"}
+                            </AvatarFallback>
+                        </Avatar>
                         <div>
-                            <CardTitle className="flex items-center gap-3 text-xl font-bold mb-2">
-                                <Sparkles className="h-6 w-6" />
-                                Kontrol Komisi
-                            </CardTitle>
-                            <CardDescription className="text-red-50 text-sm">
-                                Kelola dan pantau semua komisi transaksi (realtime)
-                            </CardDescription>
+                            <h2 className="text-xl font-bold leading-tight">{employee.name}</h2>
+                            <p className="text-xs text-red-100 mt-0.5">{employee.position || "Karyawan"} · Atur Komisi Layanan & Produk</p>
                         </div>
                     </div>
-                </CardHeader>
+                ) : (
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-white/10 rounded-lg">
+                            <Sparkles className="h-6 w-6 text-white" />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold leading-tight">Kontrol Komisi</h2>
+                            <p className="text-xs text-red-100 mt-0.5">Kelola dan pantau semua komisi transaksi (realtime)</p>
+                        </div>
+                    </div>
+                )}
+            </div>
 
-                <CardContent className="p-6">
-                    <Tabs defaultValue="transactions" className="w-full">
-                        <TabsList className="grid w-full grid-cols-4 mb-6">
-                            <TabsTrigger value="transactions" className="gap-2">
-                                <AlertTriangle className="h-4 w-4" />
-                                Transaksi ({pendingTransactions.length})
-                            </TabsTrigger>
-                            <TabsTrigger value="manage" className="gap-2">
-                                <Settings className="h-4 w-4" />
-                                Atur Komisi
-                            </TabsTrigger>
-                            <TabsTrigger value="status" className="gap-2">
-                                <Users className="h-4 w-4" />
-                                Status
-                            </TabsTrigger>
-                            <TabsTrigger value="overview" className="gap-2">
-                                <DollarSign className="h-4 w-4" />
-                                Overview
-                            </TabsTrigger>
-                        </TabsList>
+            {/* 2. SUB-HEADER STATS ROW */}
+            <div className="flex-shrink-0 bg-white border-b border-gray-100 px-6 py-3 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                <div>
+                    <span className="text-gray-500 block text-xs">Total Karyawan</span>
+                    <span className="font-bold text-gray-800 text-base">{employeeStatuses.length} orang</span>
+                </div>
+                <div>
+                    <span className="text-gray-500 block text-xs">Total Layanan</span>
+                    <span className="font-bold text-gray-800 text-base">{services.length} item</span>
+                </div>
+                <div>
+                    <span className="text-gray-500 block text-xs">Komisi Perlu Diatur</span>
+                    <span className="font-bold text-red-600 text-base">{pendingTransactions.length} transaksi</span>
+                </div>
+                <div>
+                    <span className="text-gray-500 block text-xs">Komisi Selesai</span>
+                    <span className="font-bold text-green-600 text-base">{completedTransactions.length} transaksi</span>
+                </div>
+            </div>
 
-                        {/* TAB 1: TRANSAKSI (PRIORITY) */}
-                        <TabsContent value="transactions" className="space-y-4">
-                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-                                <div className="flex items-start gap-3">
-                                    <AlertTriangle className="h-6 w-6 text-yellow-600 flex-shrink-0 mt-0.5" />
-                                    <div>
-                                        <p className="font-semibold text-yellow-800 mb-1">Transaksi Perlu Diatur</p>
-                                        <p className="text-sm text-yellow-700">
-                                            Ada {pendingTransactions.length} transaksi yang belum diatur komisinya. 
-                                            Klik "Atur Komisi" untuk langsung menyimpan data komisi!
-                                        </p>
-                                    </div>
+            {/* 3. TABS NAVIGATION */}
+            <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-2 flex items-center justify-between">
+                <div className="flex gap-2">
+                    <Button 
+                        variant={activeTab === "transactions" ? "default" : "ghost"} 
+                        size="sm" 
+                        onClick={() => setActiveTab("transactions")} 
+                        className={`rounded-full ${activeTab === "transactions" ? "bg-red-600 hover:bg-red-700 text-white" : ""}`}
+                    >
+                        <AlertTriangle className="w-4 h-4 mr-1" /> Transaksi ({pendingTransactions.length})
+                    </Button>
+                    <Button 
+                        variant={activeTab === "manage" ? "default" : "ghost"} 
+                        size="sm" 
+                        onClick={() => setActiveTab("manage")} 
+                        className={`rounded-full ${activeTab === "manage" ? "bg-red-600 hover:bg-red-700 text-white" : ""}`}
+                    >
+                        <Settings className="w-4 h-4 mr-1" /> Atur Komisi
+                    </Button>
+                    <Button 
+                        variant={activeTab === "status" ? "default" : "ghost"} 
+                        size="sm" 
+                        onClick={() => setActiveTab("status")} 
+                        className={`rounded-full ${activeTab === "status" ? "bg-red-600 hover:bg-red-700 text-white" : ""}`}
+                    >
+                        <Users className="w-4 h-4 mr-1" /> Status
+                    </Button>
+                    <Button 
+                        variant={activeTab === "overview" ? "default" : "ghost"} 
+                        size="sm" 
+                        onClick={() => setActiveTab("overview")} 
+                        className={`rounded-full ${activeTab === "overview" ? "bg-red-600 hover:bg-red-700 text-white" : ""}`}
+                    >
+                        <DollarSign className="w-4 h-4 mr-1" /> Overview
+                    </Button>
+                </div>
+            </div>
+
+            {/* 4. MAIN CONTENT AREA (SCROLLABLE) */}
+            <div className="flex-grow overflow-y-auto p-6">
+                {activeTab === "transactions" && (
+                    <div className="space-y-4">
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                            <div className="flex items-start gap-3">
+                                <AlertTriangle className="h-6 w-6 text-yellow-600 flex-shrink-0 mt-0.5" />
+                                <div>
+                                    <p className="font-semibold text-yellow-800 mb-1">Transaksi Perlu Diatur</p>
+                                    <p className="text-sm text-yellow-700">
+                                        Ada {pendingTransactions.length} transaksi yang belum diatur komisinya. 
+                                        Klik "Atur Komisi" untuk langsung menyimpan data komisi!
+                                    </p>
                                 </div>
                             </div>
+                        </div>
 
-                            {pendingTransactions.length === 0 ? (
-                                <div className="text-center py-12">
-                                    <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
-                                    <p className="text-xl font-semibold text-gray-800 mb-2">Semua Transaksi Sudah Diatur!</p>
-                                    <p className="text-gray-600">Tidak ada transaksi yang perlu pengaturan komisi</p>
-                                </div>
-                            ) : (
-                                <div className="space-y-2">
-                                    {pendingTransactions.map((transaction) => (
-                                        <div 
-                                            key={transaction.id}
-                                            className="flex items-center justify-between p-4 bg-white border border-yellow-200 rounded-lg hover:shadow-sm transition-shadow"
-                                        >
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-3 mb-2">
-                                                    <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300">
-                                                        Belum Diatur
-                                                    </Badge>
-                                                    <p className="text-xs text-gray-500">
-                                                        {new Date(transaction.created_at).toLocaleDateString('id-ID', {
-                                                            day: 'numeric',
-                                                            month: 'short',
-                                                            year: 'numeric',
-                                                            hour: '2-digit',
-                                                            minute: '2-digit'
-                                                        })}
-                                                    </p>
-                                                </div>
-                                                <p className="font-semibold text-gray-800">{transaction.barber_name}</p>
-                                                <p className="text-sm text-gray-600">
-                                                    {transaction.service_name} • {formatRupiah(transaction.unit_price)} x {transaction.quantity}
-                                                </p>
-                                                <p className="text-lg font-bold text-red-600 mt-1">
-                                                    Total: {formatRupiah(transaction.unit_price * transaction.quantity)}
+                        {pendingTransactions.length === 0 ? (
+                            <div className="text-center py-12">
+                                <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
+                                <p className="text-xl font-semibold text-gray-800 mb-2">Semua Transaksi Sudah Diatur!</p>
+                                <p className="text-gray-600">Tidak ada transaksi yang perlu pengaturan komisi</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {pendingTransactions.map((transaction) => (
+                                    <div 
+                                        key={transaction.id}
+                                        className="flex items-center justify-between p-4 bg-white border border-yellow-200 rounded-lg hover:shadow-sm transition-shadow"
+                                    >
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300">
+                                                    Belum Diatur
+                                                </Badge>
+                                                <p className="text-xs text-gray-500">
+                                                    {new Date(transaction.created_at).toLocaleDateString('id-ID', {
+                                                        day: 'numeric',
+                                                        month: 'short',
+                                                        year: 'numeric',
+                                                        hour: '2-digit',
+                                                        minute: '2-digit'
+                                                    })}
                                                 </p>
                                             </div>
-                                            <Button
-                                                onClick={() => openTransactionDialog(transaction)}
-                                                className="gap-2 bg-red-600 hover:bg-red-700"
-                                                disabled={loading}
-                                            >
-                                                <Settings className="h-4 w-4" />
-                                                Atur Komisi
-                                            </Button>
+                                            <p className="font-semibold text-gray-800">{transaction.barber_name}</p>
+                                            <p className="text-sm text-gray-600">
+                                                {transaction.service_name} • {formatRupiah(transaction.unit_price)} x {transaction.quantity}
+                                            </p>
+                                            <p className="text-lg font-bold text-red-600 mt-1">
+                                                Total: {formatRupiah(transaction.unit_price * transaction.quantity)}
+                                            </p>
+                                        </div>
+                                        <Button
+                                            onClick={() => openTransactionDialog(transaction)}
+                                            className="gap-2 bg-red-600 hover:bg-red-700"
+                                            disabled={loading}
+                                        >
+                                            <Settings className="h-4 w-4" />
+                                            Atur Komisi
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Transaksi yang sudah diatur */}
+                        {completedTransactions.length > 0 && (
+                            <div className="mt-6">
+                                <p className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                    <CheckCircle className="h-5 w-5 text-green-600" />
+                                    Sudah Diatur ({completedTransactions.length} Transaksi)
+                                </p>
+                                <div className="space-y-2">
+                                    {completedTransactions.slice(0, 10).map((transaction) => (
+                                        <div 
+                                            key={transaction.id}
+                                            className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg"
+                                        >
+                                            <div className="flex-1">
+                                                <p className="font-medium text-sm text-gray-800">{transaction.barber_name}</p>
+                                                <p className="text-xs text-gray-600">{transaction.service_name}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm font-semibold text-green-600">
+                                                    {transaction.commission_type === 'percentage' 
+                                                        ? `${transaction.commission_value}%`
+                                                        : formatRupiah(transaction.commission_value || 0)
+                                                    }
+                                                </p>
+                                                <p className="text-xs text-gray-500">
+                                                    = {formatRupiah(transaction.commission_amount || 0)}
+                                                </p>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
-                            )}
-
-                            {/* Transaksi yang sudah diatur */}
-                            {completedTransactions.length > 0 && (
-                                <div className="mt-6">
-                                    <p className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                                        <CheckCircle className="h-5 w-5 text-green-600" />
-                                        Sudah Diatur ({completedTransactions.length} Transaksi)
-                                    </p>
-                                    <div className="space-y-2">
-                                        {completedTransactions.slice(0, 10).map((transaction) => (
-                                            <div 
-                                                key={transaction.id}
-                                                className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg"
-                                            >
-                                                <div className="flex-1">
-                                                    <p className="font-medium text-sm text-gray-800">{transaction.barber_name}</p>
-                                                    <p className="text-xs text-gray-600">{transaction.service_name}</p>
-                                                </div>
-                                                <div className="text-right">
-                                                    <p className="text-sm font-semibold text-green-600">
-                                                        {transaction.commission_type === 'percentage' 
-                                                            ? `${transaction.commission_value}%`
-                                                            : formatRupiah(transaction.commission_value || 0)
-                                                        }
-                                                    </p>
-                                                    <p className="text-xs text-gray-500">
-                                                        = {formatRupiah(transaction.commission_amount || 0)}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </TabsContent>
-
-                        {/* TAB 2: ATUR KOMISI */}
-                        <TabsContent value="manage" className="space-y-4">
-                            <div className="flex items-center gap-4 mb-4">
-                                <div className="relative flex-1">
-                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                                    <Input
-                                        placeholder="Cari karyawan..."
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="pl-10"
-                                    />
-                                </div>
                             </div>
+                        )}
+                    </div>
+                )}
 
-                            <div className="space-y-0">
-                                {filteredStatuses.map((status, index) => (
-                                    <div 
-                                        key={status.employee.id}
-                                        className="border-t border-gray-200 first:border-t-0 p-6 hover:bg-gray-50 transition-colors"
-                                    >
-                                        <div className="flex items-start justify-between gap-4 mb-4">
-                                            <div className="flex items-center gap-4 flex-1">
-                                                <Avatar className="h-12 w-12 ring-2 ring-gray-200">
-                                                    <AvatarFallback className="bg-red-600 text-white font-bold">
-                                                        {status.employee.name.split(' ').map(n => n[0]).join('')}
-                                                    </AvatarFallback>
-                                                </Avatar>
-                                                <div className="flex-1">
-                                                    <p className="font-bold text-lg text-gray-800">{status.employee.name}</p>
-                                                    <p className="text-sm text-gray-600">{status.employee.email}</p>
-                                                    <div className="flex items-center gap-2 mt-2">
-                                                        <Badge variant="outline" className="text-xs">
-                                                            {status.employee.position || 'Karyawan'}
-                                                        </Badge>
-                                                        <Badge 
-                                                            variant={status.configuredServices === status.totalServices ? "default" : "destructive"}
-                                                            className="text-xs"
-                                                        >
-                                                            {status.configuredServices}/{status.totalServices} Layanan
-                                                        </Badge>
-                                                    </div>
-                                                </div>
-                                            </div>
+                {activeTab === "manage" && (
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-4 mb-4">
+                            <div className="relative flex-1">
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                <Input
+                                    placeholder="Cari karyawan..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="pl-10"
+                                />
+                            </div>
+                        </div>
 
-                                            <div className="text-right">
-                                                <div className={`text-3xl font-bold mb-1 ${getProgressColor(status.configuredServices, status.totalServices)}`}>
-                                                    {status.totalServices > 0 ? Math.round((status.configuredServices / status.totalServices) * 100) : 100}%
-                                                </div>
-                                                <p className="text-xs text-gray-600">Komisi Teratur</p>
-                                                <div className="w-32 h-2 bg-gray-200 rounded-full mt-2 overflow-hidden">
-                                                    <div 
-                                                        className={`h-full ${getProgressBg(status.configuredServices, status.totalServices)} transition-all`}
-                                                        style={{ width: `${status.totalServices > 0 ? (status.configuredServices / status.totalServices) * 100 : 100}%` }}
-                                                    />
+                        <div className="space-y-4">
+                            {filteredStatuses.map((status, index) => (
+                                <div 
+                                    key={status.employee.id}
+                                    className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow"
+                                >
+                                    <div className="flex items-start justify-between gap-4 mb-4">
+                                        <div className="flex items-center gap-4 flex-1">
+                                            <Avatar className="h-12 w-12 ring-2 ring-gray-200">
+                                                <AvatarFallback className="bg-red-600 text-white font-bold">
+                                                    {status.employee.name.split(' ').map(n => n[0]).join('')}
+                                                </AvatarFallback>
+                                            </Avatar>
+                                            <div className="flex-1">
+                                                <p className="font-bold text-lg text-gray-800">{status.employee.name}</p>
+                                                <p className="text-sm text-gray-600">{status.employee.email}</p>
+                                                <div className="flex items-center gap-2 mt-2">
+                                                    <Badge variant="outline" className="text-xs">
+                                                        {status.employee.position || 'Karyawan'}
+                                                    </Badge>
+                                                    <Badge 
+                                                        variant={status.configuredServices === status.totalServices ? "default" : "destructive"}
+                                                        className="text-xs"
+                                                    >
+                                                        {status.configuredServices}/{status.totalServices} Layanan
+                                                    </Badge>
                                                 </div>
                                             </div>
                                         </div>
 
-                                        {/* Komisi yang sudah diatur */}
-                                        {status.commissions.length > 0 && (
-                                            <div className="mb-4">
-                                                <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                                                    <CheckCircle className="h-4 w-4 text-green-600" />
-                                                    Komisi Sudah Diatur ({status.commissions.length})
-                                                </p>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                                    {status.commissions.map((commission) => {
-                                                        const service = services.find(s => s.id === commission.service_id);
-                                                        return (
-                                                            <div 
-                                                                key={commission.id}
-                                                                className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg"
-                                                            >
-                                                                <div className="flex-1">
-                                                                    <p className="font-medium text-sm text-gray-800">{service?.name}</p>
-                                                                    <p className="text-xs text-gray-600">
-                                                                        {commission.commission_type === 'percentage' 
-                                                                            ? `${commission.commission_value}%`
-                                                                            : formatRupiah(commission.commission_value)
-                                                                        }
-                                                                    </p>
-                                                                </div>
-                                                                <div className="flex items-center gap-1">
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="sm"
-                                                                        onClick={() => openEditCommissionDialog(status.employee, commission)}
-                                                                        className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                                                    >
-                                                                        <Edit className="h-4 w-4" />
-                                                                    </Button>
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="sm"
-                                                                        onClick={() => handleDeleteCommission(commission.id)}
-                                                                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                                                    >
-                                                                        <Trash2 className="h-4 w-4" />
-                                                                    </Button>
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
+                                        <div className="text-right">
+                                            <div className={`text-3xl font-bold mb-1 ${getProgressColor(status.configuredServices, status.totalServices)}`}>
+                                                {status.totalServices > 0 ? Math.round((status.configuredServices / status.totalServices) * 100) : 100}%
                                             </div>
-                                        )}
+                                            <p className="text-xs text-gray-600">Komisi Teratur</p>
+                                            <div className="w-32 h-2 bg-gray-200 rounded-full mt-2 overflow-hidden">
+                                                <div 
+                                                    className={`h-full ${getProgressBg(status.configuredServices, status.totalServices)} transition-all`}
+                                                    style={{ width: `${status.totalServices > 0 ? (status.configuredServices / status.totalServices) * 100 : 100}%` }}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
 
-                                        {/* Layanan yang belum diatur */}
-                                        {status.notConfiguredServices > 0 && (
-                                            <div>
-                                                <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                                                    <AlertTriangle className="h-4 w-4 text-red-600" />
-                                                    Belum Diatur ({status.notConfiguredServices} Layanan)
-                                                </p>
+                                    {/* Komisi yang sudah diatur */}
+                                    {status.commissions.length > 0 && (
+                                        <div className="mb-4">
+                                            <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                                                <CheckCircle className="h-4 w-4 text-green-600" />
+                                                Komisi Sudah Diatur ({status.commissions.length})
+                                            </p>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                {status.commissions.map((commission) => {
+                                                    const service = services.find(s => s.id === commission.service_id);
+                                                    return (
+                                                        <div 
+                                                            key={commission.id}
+                                                            className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg"
+                                                        >
+                                                            <div className="flex-1">
+                                                                <p className="font-medium text-sm text-gray-800">{service?.name}</p>
+                                                                <p className="text-xs text-gray-600">
+                                                                    {commission.commission_type === 'percentage' 
+                                                                        ? `${commission.commission_value}%`
+                                                                        : formatRupiah(commission.commission_value)
+                                                                    }
+                                                                </p>
+                                                            </div>
+                                                            <div className="flex items-center gap-1">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() => openEditCommissionDialog(status.employee, commission)}
+                                                                    className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                                >
+                                                                    <Edit className="h-4 w-4" />
+                                                                </Button>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() => handleDeleteCommission(commission.id)}
+                                                                    className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Layanan yang belum diatur */}
+                                    {status.notConfiguredServices > 0 && (
+                                        <div>
+                                            <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                                                <AlertTriangle className="h-4 w-4 text-red-600" />
+                                                Belum Diatur ({status.notConfiguredServices} Layanan)
+                                            </p>
+                                            <div className="flex flex-col gap-2">
                                                 <div className="flex items-center gap-2">
                                                     <Button
                                                         onClick={() => openAddCommissionDialog(status.employee)}
@@ -799,203 +852,205 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                                                         <Settings className="h-4 w-4" />
                                                         Atur Komisi
                                                     </Button>
-                                                    <p className="text-xs text-gray-600">
-                                                        {status.missingServices.map(s => s.name).join(', ')}
-                                                    </p>
                                                 </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-
-                                {filteredStatuses.length === 0 && (
-                                    <div className="text-center py-12">
-                                        <Users className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                                        <p className="text-gray-600">Tidak ada karyawan ditemukan</p>
-                                    </div>
-                                )}
-                            </div>
-                        </TabsContent>
-
-                        {/* TAB 2: STATUS KOMISI */}
-                        <TabsContent value="status" className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                                <Card className="bg-green-50 border-green-200">
-                                    <CardContent className="p-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-3 bg-green-600 rounded-lg">
-                                                <CheckCircle className="h-6 w-6 text-white" />
-                                            </div>
-                                            <div>
-                                                <p className="text-2xl font-bold text-green-600">
-                                                    {employeeStatuses.filter(s => s.configuredServices === s.totalServices).length}
+                                                <p className="text-xs text-gray-500">
+                                                    {status.missingServices.map(s => s.name).join(', ')}
                                                 </p>
-                                                <p className="text-sm text-gray-600">Komisi Lengkap</p>
                                             </div>
                                         </div>
-                                    </CardContent>
-                                </Card>
+                                    )}
+                                </div>
+                            ))}
 
-                                <Card className="bg-yellow-50 border-yellow-200">
-                                    <CardContent className="p-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-3 bg-yellow-600 rounded-lg">
-                                                <AlertTriangle className="h-6 w-6 text-white" />
-                                            </div>
-                                            <div>
-                                                <p className="text-2xl font-bold text-yellow-600">
-                                                    {employeeStatuses.filter(s => s.configuredServices > 0 && s.configuredServices < s.totalServices).length}
-                                                </p>
-                                                <p className="text-sm text-gray-600">Sebagian Diatur</p>
-                                            </div>
+                            {filteredStatuses.length === 0 && (
+                                <div className="text-center py-12">
+                                    <Users className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                                    <p className="text-gray-600">Tidak ada karyawan ditemukan</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === "status" && (
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                            <Card className="bg-green-50 border-green-200">
+                                <CardContent className="p-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-3 bg-green-600 rounded-lg">
+                                            <CheckCircle className="h-6 w-6 text-white" />
                                         </div>
-                                    </CardContent>
-                                </Card>
-
-                                <Card className="bg-red-50 border-red-200">
-                                    <CardContent className="p-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-3 bg-red-600 rounded-lg">
-                                                <XCircle className="h-6 w-6 text-white" />
-                                            </div>
-                                            <div>
-                                                <p className="text-2xl font-bold text-red-600">
-                                                    {employeeStatuses.filter(s => s.totalServices > 0 && s.configuredServices === 0).length}
-                                                </p>
-                                                <p className="text-sm text-gray-600">Belum Diatur</p>
-                                            </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            </div>
-
-                            <div className="space-y-2">
-                                {employeeStatuses.map((status) => {
-                                    const percentage = status.totalServices > 0 ? Math.round((status.configuredServices / status.totalServices) * 100) : 100;
-                                    let statusColor = 'red';
-                                    let statusText = 'Belum Diatur';
-                                    
-                                    if (percentage === 100) {
-                                        statusColor = 'green';
-                                        statusText = 'Lengkap';
-                                    } else if (percentage > 0) {
-                                        statusColor = 'yellow';
-                                        statusText = 'Sebagian';
-                                    }
-
-                                    return (
-                                        <div key={status.employee.id} className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg hover:shadow-sm transition-shadow">
-                                            <div className="flex items-center gap-4 flex-1">
-                                                <Avatar className="h-10 w-10">
-                                                    <AvatarFallback className={`bg-${statusColor}-600 text-white font-bold text-sm`}>
-                                                        {status.employee.name.split(' ').map(n => n[0]).join('')}
-                                                    </AvatarFallback>
-                                                </Avatar>
-                                                <div className="flex-1">
-                                                    <p className="font-semibold text-gray-800">{status.employee.name}</p>
-                                                    <p className="text-sm text-gray-600">{status.configuredServices}/{status.totalServices} layanan diatur</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-32 h-3 bg-gray-200 rounded-full overflow-hidden">
-                                                    <div 
-                                                        className={`h-full bg-${statusColor}-600 transition-all`}
-                                                        style={{ width: `${percentage}%` }}
-                                                    />
-                                                </div>
-                                                <Badge variant={percentage === 100 ? "default" : "destructive"} className="min-w-[80px] justify-center">
-                                                    {statusText}
-                                                </Badge>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </TabsContent>
-
-                        {/* TAB 3: OVERVIEW */}
-                        <TabsContent value="overview" className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                <Card>
-                                    <CardContent className="p-4">
-                                        <div className="text-center">
-                                            <Users className="h-8 w-8 text-blue-600 mx-auto mb-2" />
-                                            <p className="text-3xl font-bold text-gray-800">{employeeStatuses.length}</p>
-                                            <p className="text-sm text-gray-600">Total Karyawan</p>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-
-                                <Card>
-                                    <CardContent className="p-4">
-                                        <div className="text-center">
-                                            <DollarSign className="h-8 w-8 text-green-600 mx-auto mb-2" />
-                                            <p className="text-3xl font-bold text-gray-800">{services.length}</p>
-                                            <p className="text-sm text-gray-600">Total Layanan</p>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-
-                                <Card>
-                                    <CardContent className="p-4">
-                                        <div className="text-center">
-                                            <CheckCircle className="h-8 w-8 text-green-600 mx-auto mb-2" />
-                                            <p className="text-3xl font-bold text-gray-800">{commissionRules.length}</p>
-                                            <p className="text-sm text-gray-600">Komisi Diatur</p>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-
-                                <Card>
-                                    <CardContent className="p-4">
-                                        <div className="text-center">
-                                            <AlertTriangle className="h-8 w-8 text-red-600 mx-auto mb-2" />
-                                            <p className="text-3xl font-bold text-gray-800">
-                                                {(employeeStatuses.length * services.length) - commissionRules.length}
+                                        <div>
+                                            <p className="text-2xl font-bold text-green-600">
+                                                {employeeStatuses.filter(s => s.configuredServices === s.totalServices).length}
                                             </p>
-                                            <p className="text-sm text-gray-600">Belum Diatur</p>
+                                            <p className="text-sm text-gray-600">Komisi Lengkap</p>
                                         </div>
-                                    </CardContent>
-                                </Card>
-                            </div>
-
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-lg">Detail Per Karyawan</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="space-y-3">
-                                        {employeeStatuses.map((status) => (
-                                            <div key={status.employee.id} className="p-4 bg-gray-50 rounded-lg">
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <p className="font-semibold text-gray-800">{status.employee.name}</p>
-                                                    <Badge variant={status.configuredServices === status.totalServices ? "default" : "destructive"}>
-                                                        {status.totalServices > 0 ? Math.round((status.configuredServices / status.totalServices) * 100) : 100}%
-                                                    </Badge>
-                                                </div>
-                                                <div className="grid grid-cols-3 gap-4 text-sm">
-                                                    <div>
-                                                        <p className="text-gray-600">Total Layanan</p>
-                                                        <p className="font-semibold">{status.totalServices}</p>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-gray-600">Sudah Diatur</p>
-                                                        <p className="font-semibold text-green-600">{status.configuredServices}</p>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-gray-600">Belum Diatur</p>
-                                                        <p className="font-semibold text-red-600">{status.notConfiguredServices}</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
                                     </div>
                                 </CardContent>
                             </Card>
-                        </TabsContent>
-                    </Tabs>
-                </CardContent>
-            </Card>
+
+                            <Card className="bg-yellow-50 border-yellow-200">
+                                <CardContent className="p-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-3 bg-yellow-600 rounded-lg">
+                                            <AlertTriangle className="h-6 w-6 text-white" />
+                                        </div>
+                                        <div>
+                                            <p className="text-2xl font-bold text-yellow-600">
+                                                {employeeStatuses.filter(s => s.configuredServices > 0 && s.configuredServices < s.totalServices).length}
+                                            </p>
+                                            <p className="text-sm text-gray-600">Sebagian Diatur</p>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="bg-red-50 border-red-200">
+                                <CardContent className="p-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-3 bg-red-600 rounded-lg">
+                                            <XCircle className="h-6 w-6 text-white" />
+                                        </div>
+                                        <div>
+                                            <p className="text-2xl font-bold text-red-600">
+                                                {employeeStatuses.filter(s => s.totalServices > 0 && s.configuredServices === 0).length}
+                                            </p>
+                                            <p className="text-sm text-gray-600">Belum Diatur</p>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        <div className="space-y-2">
+                            {employeeStatuses.map((status) => {
+                                const percentage = status.totalServices > 0 ? Math.round((status.configuredServices / status.totalServices) * 100) : 100;
+                                let statusColor = 'red';
+                                let statusText = 'Belum Diatur';
+                                
+                                if (percentage === 100) {
+                                    statusColor = 'green';
+                                    statusText = 'Lengkap';
+                                } else if (percentage > 0) {
+                                    statusColor = 'yellow';
+                                    statusText = 'Sebagian';
+                                }
+
+                                return (
+                                    <div key={status.employee.id} className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg hover:shadow-sm transition-shadow">
+                                        <div className="flex items-center gap-4 flex-1">
+                                            <Avatar className="h-10 w-10">
+                                                <AvatarFallback className={`bg-${statusColor}-600 text-white font-bold text-sm`}>
+                                                    {status.employee.name.split(' ').map(n => n[0]).join('')}
+                                                </AvatarFallback>
+                                            </Avatar>
+                                            <div className="flex-1">
+                                                <p className="font-semibold text-gray-800">{status.employee.name}</p>
+                                                <p className="text-sm text-gray-600">{status.configuredServices}/{status.totalServices} layanan diatur</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-32 h-3 bg-gray-200 rounded-full overflow-hidden">
+                                                <div 
+                                                    className={`h-full bg-${statusColor}-600 transition-all`}
+                                                    style={{ width: `${percentage}%` }}
+                                                />
+                                            </div>
+                                            <Badge variant={percentage === 100 ? "default" : "destructive"} className="min-w-[80px] justify-center">
+                                                {statusText}
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === "overview" && (
+                    <div className="space-y-6">
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            <Card>
+                                <CardContent className="p-4">
+                                    <div className="text-center">
+                                        <Users className="h-8 w-8 text-blue-600 mx-auto mb-2" />
+                                        <p className="text-3xl font-bold text-gray-800">{employeeStatuses.length}</p>
+                                        <p className="text-sm text-gray-600">Total Karyawan</p>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card>
+                                <CardContent className="p-4">
+                                    <div className="text-center">
+                                        <DollarSign className="h-8 w-8 text-green-600 mx-auto mb-2" />
+                                        <p className="text-3xl font-bold text-gray-800">{services.length}</p>
+                                        <p className="text-sm text-gray-600">Total Layanan</p>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card>
+                                <CardContent className="p-4">
+                                    <div className="text-center">
+                                        <CheckCircle className="h-8 w-8 text-green-600 mx-auto mb-2" />
+                                        <p className="text-3xl font-bold text-gray-800">{commissionRules.length}</p>
+                                        <p className="text-sm text-gray-600">Komisi Diatur</p>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card>
+                                <CardContent className="p-4">
+                                    <div className="text-center">
+                                        <AlertTriangle className="h-8 w-8 text-red-600 mx-auto mb-2" />
+                                        <p className="text-3xl font-bold text-gray-800">
+                                            {(employeeStatuses.length * services.length) - commissionRules.length}
+                                        </p>
+                                        <p className="text-sm text-gray-600">Belum Diatur</p>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-lg">Detail Per Karyawan</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="space-y-3">
+                                    {employeeStatuses.map((status) => (
+                                        <div key={status.employee.id} className="p-4 bg-gray-50 rounded-lg">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <p className="font-semibold text-gray-800">{status.employee.name}</p>
+                                                <Badge variant={status.configuredServices === status.totalServices ? "default" : "destructive"}>
+                                                    {status.totalServices > 0 ? Math.round((status.configuredServices / status.totalServices) * 100) : 100}%
+                                                </Badge>
+                                            </div>
+                                            <div className="grid grid-cols-3 gap-4 text-sm">
+                                                <div>
+                                                    <p className="text-gray-600">Total Layanan</p>
+                                                    <p className="font-semibold">{status.totalServices}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-gray-600">Sudah Diatur</p>
+                                                    <p className="font-semibold text-green-600">{status.configuredServices}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-gray-600">Belum Diatur</p>
+                                                    <p className="font-semibold text-red-600">{status.notConfiguredServices}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+                )}
+            </div>
 
             {/* Sheet: Atur/Edit Komisi — modern side panel */}
             <Sheet open={isDialogOpen} onOpenChange={setIsDialogOpen}>
