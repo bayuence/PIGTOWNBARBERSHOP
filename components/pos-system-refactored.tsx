@@ -310,8 +310,8 @@ export function POSSystem() {
         total_amount: total,
         discount_amount: discountAmount,
         notes: checkoutData.discountReason || undefined,
-        cashier_name: currentUser?.name || null,
-        server_name: employees.find(e => String(e.id) === String(checkoutData.servingEmployee))?.name || null,
+        cashier_name: currentUser?.name || undefined,
+        server_name: employees.find(e => String(e.id) === String(checkoutData.servingEmployee))?.name || undefined,
         branch_name: branch.name
       }
       
