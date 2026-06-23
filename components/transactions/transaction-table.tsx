@@ -258,23 +258,43 @@ export function TransactionTable({
 
                   {/* Items Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {transaction.transaction_items.map((item: any, idx: number) => (
+                    {transaction.transaction_items.map((item: any, idx: number) => {
+                      const itemName = item.service?.name || item.service_name || 'Item'
+                      const isProduct = item.service_type === 'product' || item.service?.type === 'product' || Number(item.cost_price) > 0
+                      const costPrice = Number(item.cost_price || 0)
+                      const revenue = item.unit_price * item.quantity
+                      const commission = item.has_commission ? Number(item.commission_amount || 0) : 0
+                      const outletProfit = item.outlet_profit != null
+                        ? Number(item.outlet_profit)
+                        : revenue - (isProduct ? costPrice * item.quantity : 0) - commission
+
+                      return (
                       <div
                         key={idx}
                         className="text-xs p-2 bg-gray-50 rounded border"
                       >
                         <div className="flex justify-between items-start mb-1">
                           <span className="font-medium text-gray-800">
-                            {item.service?.name || 'Item'}
+                            {itemName}
+                            {isProduct && (
+                              <span className="ml-1 text-[10px] bg-blue-100 text-blue-700 px-1 py-0.5 rounded">Produk</span>
+                            )}
                           </span>
                           <span className="text-gray-600">
                             {item.quantity}x Rp {item.unit_price?.toLocaleString('id-ID')}
                           </span>
                         </div>
 
+                        {/* Product cost info */}
+                        {isProduct && (
+                          <div className="text-[10px] text-gray-500 mb-1">
+                            Modal: Rp {(costPrice * item.quantity).toLocaleString('id-ID')}
+                          </div>
+                        )}
+
                         {/* Commission Info */}
                         {item.has_commission ? (
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between mb-1">
                             <div className="flex items-center gap-2 text-green-700 bg-green-50 px-2 py-1 rounded flex-1">
                               <span className="flex items-center gap-1">
                                 ✓ Komisi:{' '}
@@ -283,7 +303,7 @@ export function TransactionTable({
                                   : `Rp ${item.commission_value?.toLocaleString('id-ID')}`}
                               </span>
                               <span className="font-medium">
-                                = Rp {item.commission_amount?.toLocaleString('id-ID')}
+                                = Rp {Number(item.commission_amount).toLocaleString('id-ID')}
                               </span>
                             </div>
                             {onCommission && (
@@ -298,7 +318,7 @@ export function TransactionTable({
                             )}
                           </div>
                         ) : (
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between mb-1">
                             <span className="text-orange-600 text-xs">
                               ⚠️ Komisi belum diatur
                             </span>
@@ -315,9 +335,36 @@ export function TransactionTable({
                             )}
                           </div>
                         )}
+
+                        {/* Outlet profit per item */}
+                        <div className="text-[10px] text-purple-700 bg-purple-50 px-2 py-0.5 rounded">
+                          🏪 Keuntungan Outlet: Rp {outletProfit.toLocaleString('id-ID')}
+                        </div>
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
+
+                  {/* Total outlet profit for this transaction */}
+                  {(() => {
+                    const totalOutletProfit = transaction.transaction_items.reduce((sum: number, item: any) => {
+                      const isProduct = item.service_type === 'product' || item.service?.type === 'product' || Number(item.cost_price) > 0
+                      const revenue = item.unit_price * item.quantity
+                      const commission = item.has_commission ? Number(item.commission_amount || 0) : 0
+                      const cost = isProduct ? Number(item.cost_price || 0) * item.quantity : 0
+                      const profit = item.outlet_profit != null ? Number(item.outlet_profit) : revenue - cost - commission
+                      return sum + profit
+                    }, 0)
+
+                    return (
+                      <div className="mt-2 pt-2 border-t flex justify-between items-center">
+                        <span className="text-xs font-semibold text-purple-700">Total Keuntungan Outlet:</span>
+                        <span className="text-sm font-bold text-purple-700">
+                          Rp {totalOutletProfit.toLocaleString('id-ID')}
+                        </span>
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
             </div>

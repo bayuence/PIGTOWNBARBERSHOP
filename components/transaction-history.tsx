@@ -302,45 +302,113 @@ export function TransactionHistory() {
       console.log("✅ Fetched transactions:", transactionsData?.length || 0)
 
       if (transactionsData && transactionsData.length > 0) {
-        // Sekarang cashier_name, server_name, branch_name sudah tersedia di transactions
-        // Tidak perlu query users lagi karena sudah ada snapshot
+        // Collect all unique service_ids and barber_ids across ALL transactions
+        // for enriching old transactions that lack snapshot data
+        const allItems = transactionsData.flatMap((t: any) => t.transaction_items || [])
+        const missingServiceIds = [...new Set(
+          allItems.filter((i: any) => !i.service_name && i.service_id).map((i: any) => i.service_id)
+        )]
+
+        // For barber_ids: use item.barber_id if set, otherwise fallback to transaction server_id
+        const allBarberIds = [...new Set([
+          ...allItems.filter((i: any) => i.barber_id).map((i: any) => String(i.barber_id)),
+          ...transactionsData.filter((t: any) => t.server_id).map((t: any) => String(t.server_id))
+        ])]
+
+        // Fetch services for old items missing snapshot data
+        let servicesMap: Record<string, any> = {}
+        if (missingServiceIds.length > 0) {
+          const { data: servicesData } = await supabase
+            .from('services')
+            .select('id, name, type, cost_price, price')
+            .in('id', missingServiceIds)
+          if (servicesData) {
+            servicesData.forEach((s: any) => { servicesMap[String(s.id)] = s })
+          }
+        }
+
+        // Fetch all commission rules for all barbers in these transactions
+        let commissionRulesMap: Record<string, any> = {}
+        if (allBarberIds.length > 0) {
+          const { data: rulesData } = await supabase
+            .from('commission_rules')
+            .select('*')
+            .in('user_id', allBarberIds)
+          if (rulesData) {
+            rulesData.forEach((r: any) => {
+              // key: userId_serviceId
+              commissionRulesMap[`${r.user_id}_${r.service_id}`] = r
+            })
+          }
+        }
+
         const enrichedTransactions = await Promise.all(
           transactionsData.map(async (transaction) => {
-            // Gunakan data komisi yang sudah ada di transaction_items dari database
+            // The server who handled this transaction (fallback for product items without barber_id)
+            const transactionServerId = transaction.server_id ? String(transaction.server_id) : null
+
             const itemsWithCommission = (transaction.transaction_items || []).map((item: any) => {
-              // Cek apakah ada data komisi yang tersimpan
-              const hasCommissionData = item.commission_status === 'credited' && 
-                                       item.commission_amount > 0;
-              
-              if (hasCommissionData) {
-                console.log('✅ Commission data found in DB for item:', item.service_name, {
-                  barber_id: item.barber_id,
-                  status: item.commission_status,
-                  type: item.commission_type,
-                  value: item.commission_value,
-                  amount: item.commission_amount
-                });
-              } else {
-                console.log('⚠️ No commission data for item:', item.service_name, {
-                  status: item.commission_status,
-                  barber_id: item.barber_id
-                });
+              // --- Enrich service info for old transactions missing snapshot ---
+              const serviceSnapshot = servicesMap[String(item.service_id)]
+              const resolvedName = item.service_name || serviceSnapshot?.name || 'Item'
+              const resolvedType = item.service_type || serviceSnapshot?.type || null
+              const resolvedCostPrice = (item.cost_price != null && item.cost_price !== 0)
+                ? item.cost_price
+                : (resolvedType === 'product' ? (serviceSnapshot?.cost_price || 0) : 0)
+
+              // --- Resolve commission: prefer DB snapshot, fallback to live rules ---
+              let hasCommissionData = item.commission_status === 'credited' && item.commission_amount > 0
+              let commissionType = item.commission_type
+              let commissionValue = item.commission_value
+              let commissionAmount = item.commission_amount
+
+              if (!hasCommissionData) {
+                // Use item's barber_id, or fall back to transaction server_id for products
+                const lookupUserId = item.barber_id ? String(item.barber_id) : transactionServerId
+                if (lookupUserId) {
+                  const ruleKey = `${lookupUserId}_${item.service_id}`
+                  const rule = commissionRulesMap[ruleKey]
+                  if (rule) {
+                    const amount = rule.commission_type === 'percentage'
+                      ? (item.unit_price * rule.commission_value / 100) * item.quantity
+                      : rule.commission_value * item.quantity
+                    hasCommissionData = true
+                    commissionType = rule.commission_type
+                    commissionValue = rule.commission_value
+                    commissionAmount = amount
+                  }
+                }
               }
+
+              // Calculate outlet profit for this item:
+              // For services: revenue - commission = outlet profit
+              // For products: (unit_price - cost_price) * qty - commission = outlet profit
+              const itemRevenue = item.unit_price * item.quantity
+              const itemCommission = hasCommissionData ? commissionAmount : 0
+              const itemCost = resolvedType === 'product' ? Number(resolvedCostPrice) * item.quantity : 0
+              const outletProfit = itemRevenue - itemCost - itemCommission
 
               return {
                 ...item,
+                service_name: resolvedName,
+                service_type: resolvedType,
+                cost_price: resolvedCostPrice,
                 has_commission: hasCommissionData,
-                // Create service object dari snapshot data untuk backward compatibility
-                service: item.service_name ? {
-                  name: item.service_name,
-                  price: item.unit_price
-                } : null
-              };
-            });
+                commission_type: commissionType,
+                commission_value: commissionValue,
+                commission_amount: commissionAmount,
+                outlet_profit: outletProfit,
+                service: {
+                  name: resolvedName,
+                  price: item.unit_price,
+                  type: resolvedType,
+                  cost_price: resolvedCostPrice,
+                }
+              }
+            })
 
             return {
               ...transaction,
-              // Gunakan snapshot data yang sudah ada
               cashier: transaction.cashier_name ? { name: transaction.cashier_name } : null,
               server: transaction.server_name ? { name: transaction.server_name } : null,
               branch: transaction.branch_name ? { name: transaction.branch_name } : null,
