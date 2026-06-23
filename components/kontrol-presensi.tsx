@@ -9,7 +9,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import {
   Clock, CheckCircle, XCircle, Camera, Timer, Settings,
   Trash2, Download, Eye, MapPin, Calendar, RefreshCw,
-  Activity, TrendingUp, LayoutGrid, LayoutList, Users
+  Activity, TrendingUp, LayoutGrid, LayoutList, Users,
+  ChevronLeft, ChevronRight, CalendarDays, List
 } from "lucide-react"
 import { format } from "date-fns"
 import { id } from "date-fns/locale"
@@ -87,6 +88,13 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
   const [previewPhoto, setPreviewPhoto]   = useState<PhotoItem | null>(null)
   const [viewMode, setViewMode]           = useState<'grid' | 'list'>('grid')
 
+  // Calendar / history state
+  const [historyViewMode, setHistoryViewMode] = useState<'calendar' | 'list'>('calendar')
+  const [calendarMonth, setCalendarMonth]     = useState<Date>(new Date())
+  const [calendarData, setCalendarData]       = useState<AttendanceWithDetails[]>([])
+  const [calendarLoading, setCalendarLoading] = useState(false)
+  const [selectedDay, setSelectedDay]         = useState<AttendanceWithDetails | null>(null)
+
   // ── load ───────────────────────────────────────────────────────────────────
   const load = useCallback(async (quiet = false) => {
     if (!employee) return
@@ -99,6 +107,31 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
     } finally {
       setLoading(false)
       setRefreshing(false)
+    }
+  }, [employee?.id])
+
+  const fetchMonthAttendance = useCallback(async (monthDate: Date) => {
+    if (!employee) return
+    setCalendarLoading(true)
+    try {
+      const year  = monthDate.getFullYear()
+      const month = monthDate.getMonth()
+      const from  = new Date(year, month, 1).toISOString()
+      const to    = new Date(year, month + 1, 0, 23, 59, 59).toISOString()
+      const { data, error } = await supabase
+        .from('attendance')
+        .select(`*, branches:branch_id (id, name)`)
+        .eq('user_id', employee.id)
+        .gte('date', from)
+        .lte('date', to)
+        .order('date', { ascending: true })
+      if (error) throw error
+      setCalendarData(data || [])
+      setSelectedDay(null)
+    } catch {
+      toast({ title: "Error", description: "Gagal memuat riwayat bulan ini", variant: "destructive" })
+    } finally {
+      setCalendarLoading(false)
     }
   }, [employee?.id])
 
@@ -123,6 +156,7 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
 
   useEffect(() => { load() }, [load])
   useEffect(() => { if (tab === "photos") loadPhotos() }, [tab])
+  useEffect(() => { if (tab === "history") fetchMonthAttendance(calendarMonth) }, [tab, calendarMonth, fetchMonthAttendance])
 
   // ── real-time ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -502,61 +536,315 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
         )}
 
         {/* ════ TAB: HISTORY ════ */}
-        {!loading && tab === "history" && (
-          <div className="p-4 space-y-2">
-            {(attData?.data ?? []).length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 gap-3">
-                <Calendar className="w-10 h-10 text-gray-200" />
-                <p className="font-bold text-gray-500">Belum ada riwayat kehadiran</p>
-              </div>
-            ) : (
-              (attData?.data ?? []).map((rec: AttendanceWithDetails) => (
-                <div key={rec.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-                  <div className="flex items-center gap-3 px-4 py-3">
-                    {/* Date */}
-                    <div className="flex-shrink-0 w-11 h-11 rounded-xl bg-red-50 border border-red-100 flex flex-col items-center justify-center">
-                      <span className="text-[10px] font-bold text-red-400 uppercase leading-none">{format(new Date(rec.date), "MMM", { locale: id })}</span>
-                      <span className="text-base font-black text-red-600 leading-none">{format(new Date(rec.date), "dd")}</span>
-                    </div>
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
-                        <StatusPill status={rec.status} />
-                        {rec.branches && (
-                          <span className="text-[10px] text-gray-400">{rec.branches.name}</span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-gray-400">
-                        {SHIFT_MAP[rec.shift_type] || rec.shift_type}
-                      </p>
-                    </div>
-                    {/* Times */}
-                    <div className="flex-shrink-0 flex items-center gap-3 text-right">
-                      <div>
-                        <p className="text-[9px] text-gray-400 font-medium">MASUK</p>
-                        <p className="text-sm font-black text-emerald-600">{fmt(rec.check_in_time)}</p>
-                      </div>
-                      <div>
-                        <p className="text-[9px] text-gray-400 font-medium">KELUAR</p>
-                        <p className="text-sm font-black text-blue-600">{fmt(rec.check_out_time)}</p>
-                      </div>
-                      {rec.total_hours != null && (
-                        <div>
-                          <p className="text-[9px] text-gray-400 font-medium">DURASI</p>
-                          <p className="text-sm font-black text-orange-600">{(rec.total_hours as number).toFixed(1)}j</p>
-                        </div>
-                      )}
-                    </div>
-                    {/* Foto indicator */}
-                    {(rec.check_in_photo || rec.check_out_photo) && (
-                      <Camera className="flex-shrink-0 w-4 h-4 text-gray-300" />
-                    )}
-                  </div>
+        {!loading && tab === "history" && (() => {
+          // ── derived calendar data ──
+          const year  = calendarMonth.getFullYear()
+          const month = calendarMonth.getMonth()
+          const firstDay = new Date(year, month, 1)
+          const daysInMonth = new Date(year, month + 1, 0).getDate()
+          // Mon=0 … Sun=6
+          let startOffset = firstDay.getDay() - 1
+          if (startOffset < 0) startOffset = 6
+
+          // Map date-string → attendance record
+          const attMap: Record<string, AttendanceWithDetails> = {}
+          calendarData.forEach(r => {
+            const key = new Date(r.date).toISOString().slice(0, 10)
+            attMap[key] = r
+          })
+
+          const todayStr = new Date().toISOString().slice(0, 10)
+
+          // Status colour helper
+          const dayColor = (rec?: AttendanceWithDetails) => {
+            if (!rec) return null
+            switch (rec.status) {
+              case 'checked_out': return { bg: 'bg-emerald-500', ring: 'ring-emerald-400', text: 'text-white', dot: 'bg-emerald-300' }
+              case 'checked_in':  return { bg: 'bg-blue-500',    ring: 'ring-blue-400',    text: 'text-white', dot: 'bg-blue-300 animate-pulse' }
+              case 'on_break':    return { bg: 'bg-amber-400',   ring: 'ring-amber-400',   text: 'text-white', dot: 'bg-amber-200' }
+              case 'absent':      return { bg: 'bg-red-400',     ring: 'ring-red-400',     text: 'text-white', dot: 'bg-red-200' }
+              default:            return { bg: 'bg-gray-300',    ring: 'ring-gray-300',    text: 'text-white', dot: 'bg-gray-200' }
+            }
+          }
+
+          // Monthly stats from calendarData
+          const monthPresent = calendarData.filter(r => r.status !== 'absent').length
+          const monthTotalHours = calendarData.reduce((s, r) => s + (Number(r.total_hours) || 0), 0)
+          const avgHours = monthPresent > 0 ? monthTotalHours / monthPresent : 0
+          const monthLate = calendarData.filter((r: any) => r.is_late === true).length
+
+          const isCurrentMonth = year === new Date().getFullYear() && month === new Date().getMonth()
+
+          return (
+            <div className="p-3 md:p-4 space-y-3">
+              {/* ── toolbar ── */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+                  <button
+                    onClick={() => setHistoryViewMode('calendar')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      historyViewMode === 'calendar'
+                        ? 'bg-white text-red-600 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <CalendarDays className="w-3.5 h-3.5" /> Kalender
+                  </button>
+                  <button
+                    onClick={() => setHistoryViewMode('list')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      historyViewMode === 'list'
+                        ? 'bg-white text-red-600 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <List className="w-3.5 h-3.5" /> List
+                  </button>
                 </div>
-              ))
-            )}
-          </div>
-        )}
+
+                {/* Month navigator */}
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => { const d = new Date(calendarMonth); d.setMonth(d.getMonth() - 1); setCalendarMonth(d) }}
+                    className="w-8 h-8 bg-white border border-gray-200 rounded-xl flex items-center justify-center hover:bg-gray-50 transition-colors shadow-sm"
+                  >
+                    <ChevronLeft className="w-4 h-4 text-gray-600" />
+                  </button>
+                  <div className="px-3 py-1.5 bg-white border border-gray-200 rounded-xl shadow-sm min-w-[110px] text-center">
+                    <span className="text-xs font-bold text-gray-700">
+                      {format(calendarMonth, "MMMM yyyy", { locale: id })}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => { const d = new Date(calendarMonth); d.setMonth(d.getMonth() + 1); setCalendarMonth(d) }}
+                    disabled={isCurrentMonth}
+                    className="w-8 h-8 bg-white border border-gray-200 rounded-xl flex items-center justify-center hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-30"
+                  >
+                    <ChevronRight className="w-4 h-4 text-gray-600" />
+                  </button>
+                  {!isCurrentMonth && (
+                    <button
+                      onClick={() => setCalendarMonth(new Date())}
+                      className="px-2.5 py-1.5 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-semibold hover:bg-red-100 transition-colors"
+                    >
+                      Hari Ini
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {calendarLoading ? (
+                <div className="flex items-center justify-center py-10 gap-2">
+                  <div className="w-6 h-6 border-3 border-red-200 border-t-red-500 rounded-full animate-spin" />
+                  <span className="text-sm text-gray-400">Memuat data bulan ini...</span>
+                </div>
+              ) : historyViewMode === 'calendar' ? (
+                <>
+                  {/* ── Calendar grid ── */}
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    {/* Day headers */}
+                    <div className="grid grid-cols-7 border-b border-gray-100">
+                      {['Sen','Sel','Rab','Kam','Jum','Sab','Min'].map((d, i) => (
+                        <div key={d} className={`py-2 text-center text-[10px] font-bold uppercase tracking-wide ${
+                          i >= 5 ? 'text-red-400' : 'text-gray-400'
+                        }`}>{d}</div>
+                      ))}
+                    </div>
+
+                    {/* Day cells */}
+                    <div className="grid grid-cols-7 gap-0">
+                      {/* offset blanks */}
+                      {Array.from({ length: startOffset }).map((_, i) => (
+                        <div key={`blank-${i}`} className="aspect-square p-1" />
+                      ))}
+
+                      {Array.from({ length: daysInMonth }).map((_, i) => {
+                        const day = i + 1
+                        const dateStr = `${year}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+                        const rec = attMap[dateStr]
+                        const col = dayColor(rec)
+                        const isToday = dateStr === todayStr
+                        const isSelected = selectedDay?.id === rec?.id && !!rec
+                        const dayOfWeek = (startOffset + i) % 7  // 0=Mon…6=Sun
+                        const isWeekend = dayOfWeek >= 5
+
+                        return (
+                          <div key={day} className="aspect-square p-1">
+                            <button
+                              onClick={() => rec && setSelectedDay(isSelected ? null : rec)}
+                              className={`w-full h-full rounded-xl flex flex-col items-center justify-center transition-all text-[11px] font-bold relative
+                                ${col ? `${col.bg} ${col.text} shadow-sm hover:opacity-90 cursor-pointer ${
+                                  isSelected ? `ring-2 ${col.ring} ring-offset-1 scale-105` : ''
+                                }` : `${
+                                  isWeekend ? 'text-red-300' : 'text-gray-400'
+                                } hover:bg-gray-50 ${rec ? 'cursor-pointer' : 'cursor-default'}`}
+                                ${isToday && !col ? 'ring-2 ring-red-400 ring-offset-1 bg-red-50 text-red-600' : ''}
+                              `}
+                            >
+                              <span className="leading-none">{day}</span>
+                              {col && <span className={`w-1 h-1 rounded-full mt-0.5 ${col.dot}`} />}
+                              {isToday && !col && <span className="w-1 h-1 rounded-full mt-0.5 bg-red-400" />}
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {/* Legend */}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 border-t border-gray-50 bg-gray-50/50">
+                      {[
+                        { color: 'bg-emerald-500', label: 'Selesai Kerja' },
+                        { color: 'bg-blue-500',    label: 'Sedang Kerja'  },
+                        { color: 'bg-amber-400',   label: 'Istirahat'     },
+                        { color: 'bg-red-400',     label: 'Absen'         },
+                      ].map(l => (
+                        <div key={l.label} className="flex items-center gap-1">
+                          <span className={`w-2.5 h-2.5 rounded-full ${l.color}`} />
+                          <span className="text-[10px] text-gray-500">{l.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ── Day detail panel ── */}
+                  {selectedDay && (() => {
+                    const r = selectedDay
+                    return (
+                      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-50 bg-gradient-to-r from-slate-50 to-gray-50">
+                          <div className="flex items-center gap-2">
+                            <CalendarDays className="w-4 h-4 text-red-500" />
+                            <span className="text-sm font-bold text-gray-700">
+                              {format(new Date(r.date), "EEEE, d MMMM yyyy", { locale: id })}
+                            </span>
+                          </div>
+                          <button onClick={() => setSelectedDay(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">&times;</button>
+                        </div>
+                        <div className="p-4 space-y-3">
+                          <div className="flex flex-wrap gap-2">
+                            <StatusPill status={r.status} />
+                            {r.branches && (
+                              <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
+                                <MapPin className="w-3 h-3" />{r.branches.name}
+                              </span>
+                            )}
+                            <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
+                              <Clock className="w-3 h-3" />{SHIFT_MAP[r.shift_type] || r.shift_type}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-center">
+                              <p className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wider">Masuk</p>
+                              <p className="text-xl font-black text-emerald-700 mt-0.5">{fmt(r.check_in_time)}</p>
+                            </div>
+                            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-center">
+                              <p className="text-[10px] font-semibold text-blue-500 uppercase tracking-wider">Keluar</p>
+                              <p className="text-xl font-black text-blue-700 mt-0.5">{fmt(r.check_out_time)}</p>
+                            </div>
+                            <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center">
+                              <p className="text-[10px] font-semibold text-orange-500 uppercase tracking-wider">Durasi</p>
+                              <p className="text-xl font-black text-orange-700 mt-0.5">
+                                {r.total_hours ? `${(Number(r.total_hours)).toFixed(1)}j` : '—'}
+                              </p>
+                            </div>
+                          </div>
+                          {(r.check_in_photo || r.check_out_photo) && (
+                            <div className="grid grid-cols-2 gap-2">
+                              {[{ url: r.check_in_photo, label: 'MASUK', cls: 'border-emerald-200 bg-emerald-50', bar: 'bg-emerald-600/80' },
+                                { url: r.check_out_photo, label: 'KELUAR', cls: 'border-blue-200 bg-blue-50', bar: 'bg-blue-600/80' }
+                              ].map((ph, i) => (
+                                <div key={i} className={`relative aspect-video rounded-xl overflow-hidden border ${ph.cls}`}>
+                                  {ph.url
+                                    ? <img src={ph.url} alt={ph.label} className="w-full h-full object-cover" />
+                                    : <div className="w-full h-full flex items-center justify-center"><Camera className="w-6 h-6 text-gray-200" /></div>}
+                                  <div className={`absolute bottom-0 inset-x-0 py-1 text-[10px] font-bold text-white text-center tracking-widest ${ph.bar}`}>{ph.label}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })()}
+
+                  {/* ── Monthly stats ── */}
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="px-4 py-3 border-b border-gray-50 flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-red-500" />
+                      <span className="text-sm font-bold text-gray-700">Ringkasan {format(calendarMonth, "MMMM yyyy", { locale: id })}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-0 divide-x divide-y divide-gray-100">
+                      {[
+                        { label: 'Hari Hadir',       value: `${monthPresent} hari`,                  color: 'text-emerald-600', icon: CheckCircle },
+                        { label: 'Total Jam Kerja',   value: `${monthTotalHours.toFixed(1)} jam`,    color: 'text-blue-600',    icon: Clock       },
+                        { label: 'Rata-rata/Hari',    value: `${avgHours.toFixed(1)} jam`,           color: 'text-orange-600',  icon: Timer       },
+                        { label: 'Hari Terlambat',    value: `${monthLate} hari`,                   color: 'text-red-500',     icon: XCircle     },
+                      ].map((s, i) => (
+                        <div key={i} className="flex items-center gap-3 px-4 py-3">
+                          <s.icon className={`w-5 h-5 ${s.color} flex-shrink-0`} />
+                          <div>
+                            <p className="text-[10px] text-gray-400 font-medium">{s.label}</p>
+                            <p className={`text-base font-black ${s.color} leading-tight`}>{s.value}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                // ── LIST VIEW ──
+                <div className="space-y-2">
+                  {calendarData.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 gap-3">
+                      <Calendar className="w-10 h-10 text-gray-200" />
+                      <p className="font-bold text-gray-500">Tidak ada data untuk bulan ini</p>
+                      <p className="text-xs text-gray-400">Coba navigasi ke bulan yang berbeda</p>
+                    </div>
+                  ) : (
+                    [...calendarData].reverse().map((rec: AttendanceWithDetails) => (
+                      <div key={rec.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+                        <div className="flex items-center gap-3 px-4 py-3">
+                          <div className="flex-shrink-0 w-11 h-11 rounded-xl bg-red-50 border border-red-100 flex flex-col items-center justify-center">
+                            <span className="text-[10px] font-bold text-red-400 uppercase leading-none">{format(new Date(rec.date), "MMM", { locale: id })}</span>
+                            <span className="text-base font-black text-red-600 leading-none">{format(new Date(rec.date), "dd")}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+                              <StatusPill status={rec.status} />
+                              {rec.branches && (
+                                <span className="text-[10px] text-gray-400">{rec.branches.name}</span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-gray-400">{SHIFT_MAP[rec.shift_type] || rec.shift_type}</p>
+                          </div>
+                          <div className="flex-shrink-0 flex items-center gap-3 text-right">
+                            <div>
+                              <p className="text-[9px] text-gray-400 font-medium">MASUK</p>
+                              <p className="text-sm font-black text-emerald-600">{fmt(rec.check_in_time)}</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] text-gray-400 font-medium">KELUAR</p>
+                              <p className="text-sm font-black text-blue-600">{fmt(rec.check_out_time)}</p>
+                            </div>
+                            {rec.total_hours != null && (
+                              <div>
+                                <p className="text-[9px] text-gray-400 font-medium">DURASI</p>
+                                <p className="text-sm font-black text-orange-600">{(Number(rec.total_hours)).toFixed(1)}j</p>
+                              </div>
+                            )}
+                          </div>
+                          {(rec.check_in_photo || rec.check_out_photo) && (
+                            <Camera className="flex-shrink-0 w-4 h-4 text-gray-300" />
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })()}
       </div>
 
       {/* ── PHOTO PREVIEW DIALOG ── */}
