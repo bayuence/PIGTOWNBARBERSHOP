@@ -99,6 +99,8 @@ function EmployeeManagement() {
 
     const [showNewEmployeePin, setShowNewEmployeePin] = useState(false)
     const [showEditEmployeePin, setShowEditEmployeePin] = useState(false)
+    const [showNewEmployeePassword, setShowNewEmployeePassword] = useState(false)
+    const [showEditEmployeePassword, setShowEditEmployeePassword] = useState(false)
 
     const { toast } = useToast()
 
@@ -140,6 +142,7 @@ function EmployeeManagement() {
         position: "",
         pin: "",
         status: "active",
+        password: "",
     })
 
     const [editEmployee, setEditEmployee] = useState<Employee | null>(null)
@@ -385,6 +388,16 @@ function EmployeeManagement() {
             return
         }
 
+        if (!newEmployee.password || newEmployee.password.length < 6) {
+            console.log("Validation failed: Password invalid")
+            toast({
+                title: "Error",
+                description: "Password login harus diisi minimal 6 karakter",
+                variant: "destructive",
+            })
+            return
+        }
+
         console.log("All validations passed, starting to add employee...")
         setOperationLoading(true)
         try {
@@ -396,6 +409,7 @@ function EmployeeManagement() {
                 position: newEmployee.position,
                 pin: newEmployee.pin,
                 status: newEmployee.status,
+                password: newEmployee.password,
             })
 
             if (error) {
@@ -423,6 +437,7 @@ function EmployeeManagement() {
                 position: "",
                 pin: "",
                 status: "active",
+                password: "",
             })
             await loadEmployees()
             setOperationLoading(false)
@@ -438,7 +453,7 @@ function EmployeeManagement() {
     }
 
     const handleEditEmployee = (employee: Employee) => {
-        setEditEmployee(employee)
+        setEditEmployee({ ...employee, password: "" })
         setIsEditDialogOpen(true)
     }
 
@@ -452,16 +467,22 @@ function EmployeeManagement() {
             return;
         }
 
+        const updateData: any = {
+            name: editEmployee.name,
+            email: editEmployee.email,
+            phone: editEmployee.phone,
+            pin: editEmployee.pin,
+            status: editEmployee.status,
+            position: editEmployee.position,
+        }
+
+        if (editEmployee.password && editEmployee.password.trim() !== "") {
+            updateData.password = editEmployee.password;
+        }
+
         setOperationLoading(true)
         try {
-            const { data, error } = await updateEmployee(editEmployee.id, {
-                name: editEmployee.name,
-                email: editEmployee.email,
-                phone: editEmployee.phone,
-                pin: editEmployee.pin,
-                status: editEmployee.status,
-                position: editEmployee.position,
-            });
+            const { data, error } = await updateEmployee(editEmployee.id, updateData);
 
             if (error) {
                 console.error("Error updating employee:", error);
@@ -657,6 +678,28 @@ function EmployeeManagement() {
                                         onClick={() => setShowNewEmployeePin(!showNewEmployeePin)}
                                     >
                                         {showNewEmployeePin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                    </Button>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="password">Password Login *</Label>
+                                <div className="relative">
+                                    <Input
+                                        id="password"
+                                        type={showNewEmployeePassword ? "text" : "password"}
+                                        value={newEmployee.password}
+                                        onChange={(e) => setNewEmployee({ ...newEmployee, password: e.target.value })}
+                                        placeholder="Password untuk login email"
+                                        className="pr-10"
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                                        onClick={() => setShowNewEmployeePassword(!showNewEmployeePassword)}
+                                    >
+                                        {showNewEmployeePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                     </Button>
                                 </div>
                             </div>
@@ -1253,6 +1296,28 @@ function EmployeeManagement() {
                                         onClick={() => setShowEditEmployeePin(!showEditEmployeePin)}
                                     >
                                         {showEditEmployeePin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                    </Button>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="edit-password">Password Baru (Kosongkan jika tidak diubah)</Label>
+                                <div className="relative">
+                                    <Input
+                                        id="edit-password"
+                                        type={showEditEmployeePassword ? "text" : "password"}
+                                        value={editEmployee.password || ""}
+                                        onChange={(e) => setEditEmployee({ ...editEmployee, password: e.target.value })}
+                                        placeholder="Masukkan password baru"
+                                        className="pr-10"
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                                        onClick={() => setShowEditEmployeePassword(!showEditEmployeePassword)}
+                                    >
+                                        {showEditEmployeePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                     </Button>
                                 </div>
                             </div>

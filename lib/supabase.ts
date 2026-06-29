@@ -8,6 +8,7 @@
  */
 
 import { createClient } from "@supabase/supabase-js"
+import bcrypt from "bcryptjs"
 
 // =============================
 // Supabase Client Configuration
@@ -51,6 +52,7 @@ export interface User {
   status?: string
   role?: string
   pin?: string
+  password?: string
   salary?: number
   commission_rate?: number
   current_absent_days?: number
@@ -257,6 +259,7 @@ export interface EmployeeStats {
   penaltyPoints: number
   totalBonus: number
   totalPenalty: number
+  baseSalary?: number
 }
 
 // =============================
@@ -1229,11 +1232,15 @@ export function setupEmployeeRealtime(callback: any) {
 
 export async function addEmployee(data: any) {
   try {
+    let hashedPassword = data.password
+    if (hashedPassword && !hashedPassword.startsWith('$2a$') && !hashedPassword.startsWith('$2b$')) {
+      hashedPassword = await bcrypt.hash(hashedPassword, 10)
+    }
+
     const insertData = {
       ...data,
       role: data.role || 'employee',
-      // Provide a dummy password hash if not set. User can login with PIN or reset password later.
-      password: data.password || '$2a$10$dummyHashDummyHashDummyHashDummyHashDummyHashDummyHa',
+      password: hashedPassword || '$2a$10$dummyHashDummyHashDummyHashDummyHashDummyHashDummyHa',
     }
     
     const { data: newEmp, error } = await supabase
@@ -1251,9 +1258,14 @@ export async function addEmployee(data: any) {
 
 export async function updateEmployee(id: string, data: any) {
   try {
+    const updateData = { ...data }
+    if (updateData.password && !updateData.password.startsWith('$2a$') && !updateData.password.startsWith('$2b$')) {
+      updateData.password = await bcrypt.hash(updateData.password, 10)
+    }
+
     const { data: updatedEmp, error } = await supabase
       .from('users')
-      .update(data)
+      .update(updateData)
       .eq('id', id)
       .select()
       .single()
