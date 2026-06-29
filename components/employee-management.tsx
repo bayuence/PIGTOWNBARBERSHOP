@@ -453,7 +453,11 @@ function EmployeeManagement() {
     }
 
     const handleEditEmployee = (employee: Employee) => {
-        setEditEmployee({ ...employee, password: "" })
+        const hasDummyPassword = !employee.password || employee.password === "$2a$10$dummyHashDummyHashDummyHashDummyHashDummyHashDummyHa"
+        setEditEmployee({
+            ...employee,
+            password: hasDummyPassword ? "" : "••••••"
+        })
         setIsEditDialogOpen(true)
     }
 
@@ -467,6 +471,26 @@ function EmployeeManagement() {
             return;
         }
 
+        // Password is required for login
+        if (!editEmployee.password || editEmployee.password.trim() === "") {
+            toast({
+                title: "Error",
+                description: "Password wajib diisi karena digunakan untuk login!",
+                variant: "destructive",
+            })
+            return
+        }
+
+        // Validate length if updated
+        if (editEmployee.password !== "••••••" && editEmployee.password.length < 6) {
+            toast({
+                title: "Error",
+                description: "Password baru harus minimal 6 karakter!",
+                variant: "destructive",
+            })
+            return
+        }
+
         const updateData: any = {
             name: editEmployee.name,
             email: editEmployee.email,
@@ -476,7 +500,7 @@ function EmployeeManagement() {
             position: editEmployee.position,
         }
 
-        if (editEmployee.password && editEmployee.password.trim() !== "") {
+        if (editEmployee.password && editEmployee.password.trim() !== "" && editEmployee.password !== "••••••") {
             updateData.password = editEmployee.password;
         }
 
@@ -1300,14 +1324,14 @@ function EmployeeManagement() {
                                 </div>
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="edit-password">Password Baru (Kosongkan jika tidak diubah)</Label>
+                                <Label htmlFor="edit-password">Password Login *</Label>
                                 <div className="relative">
                                     <Input
                                         id="edit-password"
                                         type={showEditEmployeePassword ? "text" : "password"}
                                         value={editEmployee.password || ""}
                                         onChange={(e) => setEditEmployee({ ...editEmployee, password: e.target.value })}
-                                        placeholder="Masukkan password baru"
+                                        placeholder={editEmployee.password === "••••••" ? "Password sudah diatur" : "Masukkan password login"}
                                         className="pr-10"
                                     />
                                     <Button
@@ -1315,11 +1339,33 @@ function EmployeeManagement() {
                                         variant="ghost"
                                         size="sm"
                                         className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                                        onClick={() => setShowEditEmployeePassword(!showEditEmployeePassword)}
+                                        onClick={() => {
+                                            if (editEmployee.password === "••••••") {
+                                                toast({
+                                                    title: "Info Keamanan",
+                                                    description: "Password saat ini terenkripsi demi keamanan dan tidak dapat ditampilkan secara langsung.",
+                                                })
+                                            } else {
+                                                setShowEditEmployeePassword(!showEditEmployeePassword)
+                                            }
+                                        }}
                                     >
                                         {showEditEmployeePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                     </Button>
                                 </div>
+                                {(!editEmployee.password || editEmployee.password.trim() === "") ? (
+                                    <p className="text-xs font-semibold text-red-500 mt-1">
+                                        ⚠️ Password wajib diisi karena digunakan untuk login!
+                                    </p>
+                                ) : editEmployee.password === "••••••" ? (
+                                    <p className="text-xs text-green-600 mt-1">
+                                        ✅ Password aktif sudah diatur. Ketik password baru jika ingin mengubah.
+                                    </p>
+                                ) : (
+                                    <p className="text-xs text-blue-500 mt-1">
+                                        ℹ️ Password akan diperbarui saat disimpan.
+                                    </p>
+                                )}
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="edit-status">Status</Label>
