@@ -693,13 +693,22 @@ function EmployeeManagement() {
                                         onChange={(e) => setNewEmployee({ ...newEmployee, pin: e.target.value })}
                                         placeholder="••••••"
                                         className="pr-10"
+                                        autoComplete="new-password"
+                                        data-lpignore="true"
+                                        data-1password-ignore="true"
+                                        data-dashlane-ignore="true"
+                                        data-bitwarden-ignore="true"
                                     />
                                     <Button
                                         type="button"
                                         variant="ghost"
                                         size="sm"
                                         className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                                        onClick={() => setShowNewEmployeePin(!showNewEmployeePin)}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setShowNewEmployeePin(!showNewEmployeePin);
+                                        }}
                                     >
                                         {showNewEmployeePin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                     </Button>
@@ -715,13 +724,22 @@ function EmployeeManagement() {
                                         onChange={(e) => setNewEmployee({ ...newEmployee, password: e.target.value })}
                                         placeholder="Password untuk login email"
                                         className="pr-10"
+                                        autoComplete="new-password"
+                                        data-lpignore="true"
+                                        data-1password-ignore="true"
+                                        data-dashlane-ignore="true"
+                                        data-bitwarden-ignore="true"
                                     />
                                     <Button
                                         type="button"
                                         variant="ghost"
                                         size="sm"
                                         className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                                        onClick={() => setShowNewEmployeePassword(!showNewEmployeePassword)}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setShowNewEmployeePassword(!showNewEmployeePassword);
+                                        }}
                                     >
                                         {showNewEmployeePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                     </Button>
@@ -1311,13 +1329,22 @@ function EmployeeManagement() {
                                         onChange={(e) => setEditEmployee({ ...editEmployee, pin: e.target.value })}
                                         placeholder="••••••"
                                         className="pr-10"
+                                        autoComplete="new-password"
+                                        data-lpignore="true"
+                                        data-1password-ignore="true"
+                                        data-dashlane-ignore="true"
+                                        data-bitwarden-ignore="true"
                                     />
                                     <Button
                                         type="button"
                                         variant="ghost"
                                         size="sm"
                                         className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                                        onClick={() => setShowEditEmployeePin(!showEditEmployeePin)}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setShowEditEmployeePin(!showEditEmployeePin);
+                                        }}
                                     >
                                         {showEditEmployeePin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                     </Button>
@@ -1333,13 +1360,20 @@ function EmployeeManagement() {
                                         onChange={(e) => setEditEmployee({ ...editEmployee, password: e.target.value })}
                                         placeholder={editEmployee.password === "••••••" ? "Password sudah diatur" : "Masukkan password login"}
                                         className="pr-10"
+                                        autoComplete="new-password"
+                                        data-lpignore="true"
+                                        data-1password-ignore="true"
+                                        data-dashlane-ignore="true"
+                                        data-bitwarden-ignore="true"
                                     />
                                     <Button
                                         type="button"
                                         variant="ghost"
                                         size="sm"
                                         className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                                        onClick={() => {
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
                                             if (editEmployee.password === "••••••") {
                                                 toast({
                                                     title: "Info Keamanan",
