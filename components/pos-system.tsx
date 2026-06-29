@@ -602,13 +602,22 @@ export function POSSystem() {
       receiptText += "\n\n\n" // Add spacing before cut
       receiptText += CUT // Cut paper
 
-      // Send to printer
+      // Send to printer in chunks (BLE max per-packet is typically 20 bytes)
       const data = encoder.encode(receiptText)
-      if (writeCharacteristic.properties.writeWithoutResponse) {
-        await writeCharacteristic.writeValueWithoutResponse(data)
-      } else {
-        await writeCharacteristic.writeValue(data)
+      const CHUNK_SIZE = 20
+      const sendChunked = async (characteristic: BluetoothRemoteGATTCharacteristic, buffer: Uint8Array) => {
+        for (let offset = 0; offset < buffer.length; offset += CHUNK_SIZE) {
+          const chunk = buffer.slice(offset, offset + CHUNK_SIZE)
+          if (characteristic.properties.writeWithoutResponse) {
+            await characteristic.writeValueWithoutResponse(chunk)
+          } else {
+            await characteristic.writeValue(chunk)
+          }
+          // Small delay between chunks to avoid overflowing printer buffer
+          await new Promise(resolve => setTimeout(resolve, 30))
+        }
       }
+      await sendChunked(writeCharacteristic, data)
 
       toast.dismiss("bluetooth-print")
       toast.success("Print via Bluetooth Berhasil! 🖨️", {
