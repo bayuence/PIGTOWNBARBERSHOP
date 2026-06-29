@@ -10,10 +10,6 @@ import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/use-toast"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
@@ -22,11 +18,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import {
   DollarSign,
   Users,
-  Settings,
   ArrowLeft,
   BarChart3,
-  Eye,
-  EyeOff,
   TrendingDown,
   Activity,
   Target,
@@ -35,16 +28,13 @@ import {
   Menu,
   ChevronRight,
   Crown,
-  Plus,
-  Shield,
-  Lock
+  Plus
 } from "lucide-react"
 
 // Supabase & Logic Imports
 import {
   supabase,
-  getCurrentUser,
-  updateUserPin
+  getCurrentUser
 } from "@/lib/supabase"
 
 // Komponen Fungsional
@@ -66,19 +56,7 @@ export function OwnerDashboard() {
   // State Management
   const [activeTab, setActiveTab] = useState("overview")
   const [loading, setLoading] = useState(true)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
-  const [showPin, setShowPin] = useState(false)
-  const [showCurrentPin, setShowCurrentPin] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [accountSettings, setAccountSettings] = useState({
-    email: "",
-    currentPassword: "",
-    newPassword: "",
-    confirmPassword: "",
-    pin: "",
-    currentPin: ""
-  })
   const [realTimeEnabled, setRealTimeEnabled] = useState(true)
   const [connectionStatus, setConnectionStatus] = useState<"connected" | "disconnected" | "error">("disconnected")
   const [currentUserData, setCurrentUserData] = useState<any>(null)
@@ -106,14 +84,6 @@ export function OwnerDashboard() {
       }
 
       setCurrentUserData(user)
-      setAccountSettings((prev) => ({
-        ...prev,
-        email: user.email || "",
-        pin: (user as any).pin || "",
-        currentPin: (user as any).pin || "",
-        currentPassword: "",
-      }))
-      
       setLoading(false)
       testDatabaseConnection()
     }
@@ -144,74 +114,7 @@ export function OwnerDashboard() {
     }
   }
 
-  const handleSettingsSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    // Validasi password
-    if (accountSettings.newPassword && accountSettings.newPassword !== accountSettings.confirmPassword) {
-      toast({ title: "Error", description: "Password baru dan konfirmasi tidak cocok!", variant: "destructive" })
-      return
-    }
-    
-    // Validasi PIN
-    if (accountSettings.pin && (accountSettings.pin.length !== 6 || !/^\d+$/.test(accountSettings.pin))) {
-      toast({ title: "Error", description: "PIN harus 6 digit angka!", variant: "destructive" })
-      return
-    }
 
-    try {
-      const currentUser = await getCurrentUser()
-      if (!currentUser) {
-        toast({ title: "Error", description: "User tidak ditemukan!", variant: "destructive" })
-        return
-      }
-
-      // Update email jika berubah
-      if (currentUser.email !== accountSettings.email) {
-        const { error: emailError } = await supabase.auth.updateUser({ email: accountSettings.email })
-        if (emailError) throw emailError
-      }
-
-      // Update password jika diisi
-      if (accountSettings.newPassword) {
-        const { error: passwordError } = await supabase.auth.updateUser({ password: accountSettings.newPassword })
-        if (passwordError) throw passwordError
-      }
-
-      // Update PIN di database
-      if (accountSettings.pin !== accountSettings.currentPin) {
-        const pinUpdated = await updateUserPin(currentUser.id, accountSettings.pin)
-        if (!pinUpdated) {
-          throw new Error("Gagal update PIN")
-        }
-      }
-
-      // Update data user lainnya
-      const { error: dbError } = await supabase
-        .from("users")
-        .update({ 
-          email: accountSettings.email,
-          pin: accountSettings.pin 
-        })
-        .eq("id", currentUser.id)
-
-      if (dbError) throw dbError
-
-      toast({ title: "Berhasil", description: "Pengaturan akun berhasil diperbarui!" })
-      setSettingsOpen(false)
-      setAccountSettings((prev) => ({ 
-        ...prev, 
-        currentPassword: "", 
-        newPassword: "", 
-        confirmPassword: "",
-        currentPin: prev.pin // Update current pin dengan yang baru
-      }))
-      
-    } catch (error: any) {
-      console.error("Error updating settings:", error)
-      toast({ title: "Error", description: `Gagal memperbarui pengaturan: ${error.message}`, variant: "destructive" })
-    }
-  }
 
   // Loading State dengan tampilan modern
   if (loading) {
@@ -326,152 +229,6 @@ export function OwnerDashboard() {
                 >
                   <RefreshCw className={`h-4 w-4 ${realTimeEnabled ? 'animate-spin' : ''}`} />
                 </Button>
-
-                <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-                  <DialogTrigger asChild>
-                    <Button className="h-10 w-10 p-0 bg-gradient-to-r from-indigo-500/90 to-red-500/90 text-white border-0 shadow-lg">
-                      <Settings className="h-4 w-4" />
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-md backdrop-blur-xl bg-white/95 dark:bg-slate-900/95 border border-white/20 dark:border-slate-700/50 shadow-2xl">
-                    <DialogHeader>
-                      <DialogTitle className="flex items-center gap-2 text-xl">
-                        <Settings className="h-6 w-6 text-red-500 animate-pulse" />
-                        Pengaturan Akun
-                      </DialogTitle>
-                      <DialogDescription>
-                        Kelola pengaturan akun dan keamanan Anda di sini
-                      </DialogDescription>
-                    </DialogHeader>
-                    <form onSubmit={handleSettingsSubmit} className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="email" className="text-sm font-medium">Email</Label>
-                        <Input
-                          id="email"
-                          type="email"
-                          value={accountSettings.email}
-                          onChange={(e) => setAccountSettings((prev) => ({ ...prev, email: e.target.value }))}
-                          className="bg-white/70 dark:bg-slate-800/70 border-slate-300 dark:border-slate-600 focus:border-red-500 focus:ring-red-500/50 backdrop-blur-sm transition-all duration-300"
-                          placeholder="owner@example.com"
-                        />
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label htmlFor="newPassword" className="text-sm font-medium">Password Baru (Opsional)</Label>
-                        <div className="relative">
-                          <Input
-                            id="newPassword"
-                            type={showPassword ? "text" : "password"}
-                            value={accountSettings.newPassword}
-                            onChange={(e) => setAccountSettings((prev) => ({ ...prev, newPassword: e.target.value }))}
-                            className="bg-white/70 dark:bg-slate-800/70 border-slate-300 dark:border-slate-600 focus:border-red-500 focus:ring-red-500/50 pr-10 backdrop-blur-sm transition-all duration-300"
-                            placeholder="Masukkan password baru"
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                            onClick={() => setShowPassword(!showPassword)}
-                          >
-                            {showPassword ?
-                              <EyeOff className="h-4 w-4 text-slate-500 hover:text-slate-700 transition-colors duration-200" /> :
-                              <Eye className="h-4 w-4 text-slate-500 hover:text-slate-700 transition-colors duration-200" />
-                            }
-                          </Button>
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label htmlFor="confirmPassword" className="text-sm font-medium">Konfirmasi Password Baru</Label>
-                        <Input
-                          id="confirmPassword"
-                          type={showPassword ? "text" : "password"}
-                          value={accountSettings.confirmPassword}
-                          onChange={(e) => setAccountSettings((prev) => ({ ...prev, confirmPassword: e.target.value }))}
-                          className="bg-white/70 dark:bg-slate-800/70 border-slate-300 dark:border-slate-600 focus:border-red-500 focus:ring-red-500/50 backdrop-blur-sm transition-all duration-300"
-                          placeholder="Konfirmasi password baru"
-                        />
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label htmlFor="currentPin" className="text-sm font-medium">PIN Saat Ini</Label>
-                        <div className="relative">
-                          <Input
-                            id="currentPin"
-                            type={showCurrentPin ? "text" : "password"}
-                            value={accountSettings.currentPin}
-                            disabled
-                            className="bg-gray-100 dark:bg-slate-800/70 border-slate-300 dark:border-slate-600 pr-10 backdrop-blur-sm"
-                            placeholder="PIN saat ini"
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                            onClick={() => setShowCurrentPin(!showCurrentPin)}
-                          >
-                            {showCurrentPin ?
-                              <EyeOff className="h-4 w-4 text-slate-500 hover:text-slate-700 transition-colors duration-200" /> :
-                              <Eye className="h-4 w-4 text-slate-500 hover:text-slate-700 transition-colors duration-200" />
-                            }
-                          </Button>
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label htmlFor="pin" className="text-sm font-medium">PIN Baru (6 digit)</Label>
-                        <div className="relative">
-                          <Input
-                            id="pin"
-                            type={showPin ? "text" : "password"}
-                            value={accountSettings.pin}
-                            onChange={(e) => {
-                              const value = e.target.value.replace(/\D/g, "").slice(0, 6);
-                              setAccountSettings((prev) => ({ ...prev, pin: value }));
-                            }}
-                            className="bg-white/70 dark:bg-slate-800/70 border-slate-300 dark:border-slate-600 focus:border-red-500 focus:ring-red-500/50 pr-10 backdrop-blur-sm transition-all duration-300"
-                            placeholder="123456"
-                            maxLength={6}
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                            onClick={() => setShowPin(!showPin)}
-                          >
-                            {showPin ?
-                              <EyeOff className="h-4 w-4 text-slate-500 hover:text-slate-700 transition-colors duration-200" /> :
-                              <Eye className="h-4 w-4 text-slate-500 hover:text-slate-700 transition-colors duration-200" />
-                            }
-                          </Button>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          PIN digunakan untuk autentikasi akses ke dashboard
-                        </p>
-                      </div>
-                      
-                      <div className="flex gap-2 pt-4">
-                        <Button
-                          type="submit"
-                          className="flex-1 bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600 transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105"
-                        >
-                          Simpan Perubahan
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => setSettingsOpen(false)}
-                          className="bg-white/70 dark:bg-slate-800/70 hover:bg-white/90 dark:hover:bg-slate-800/90 transition-all duration-300"
-                        >
-                          Batal
-                        </Button>
-                      </div>
-                    </form>
-                  </DialogContent>
-                </Dialog>
               </div>
             </div>
             
@@ -527,15 +284,6 @@ export function OwnerDashboard() {
                   <RefreshCw className={`h-4 w-4 ${realTimeEnabled ? 'animate-spin' : ''}`} />
                   <span>Realtime: {realTimeEnabled ? 'ON' : 'OFF'}</span>
                 </Button>
-
-                <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-                  <DialogTrigger asChild>
-                    <Button className="group gap-2 bg-gradient-to-r from-indigo-500/90 to-red-500/90 text-white border-0 hover:from-indigo-600/90 hover:to-red-600/90 shadow-xl transition-all duration-300 hover:shadow-2xl hover:scale-105 backdrop-blur-sm">
-                      <Settings className="h-4 w-4 group-hover:rotate-180 transition-transform duration-500" />
-                      <span>Settings</span>
-                    </Button>
-                  </DialogTrigger>
-                </Dialog>
               </div>
             </div>
           </div>

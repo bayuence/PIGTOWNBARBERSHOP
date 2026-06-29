@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import Image from "next/image"
-import { LayoutDashboard, ShoppingCart, Camera, TrendingDown, LogOut, ChevronLeft, ChevronRight, Users, CreditCard, X } from "lucide-react"
+import { LayoutDashboard, ShoppingCart, Camera, TrendingDown, LogOut, ChevronLeft, ChevronRight, Users, CreditCard, X, BarChart3 } from "lucide-react"
 
 interface User {
   email?: string
@@ -57,6 +57,13 @@ const menuItems = [
     href: "/kasbon",
     description: "Manajemen kasbon",
     color: "text-orange-400"
+  },
+  {
+    title: "Insight Harian",
+    icon: BarChart3,
+    href: "/daily-insight",
+    description: "Laporan insight harian",
+    color: "text-emerald-400"
   },
   {
     title: "Owner Dashboard",
