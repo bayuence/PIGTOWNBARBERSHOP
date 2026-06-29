@@ -298,9 +298,20 @@ export function POSSystem() {
     }
 
     try {
+      // UUID service umum printer thermal Bluetooth (ESC/POS)
+      const PRINTER_SERVICE_UUIDS = [
+        '000018f0-0000-1000-8000-00805f9b34fb', // Xprinter, HPRT, Generic
+        '0000ff00-0000-1000-8000-00805f9b34fb', // Common thermal
+        '0000ffe0-0000-1000-8000-00805f9b34fb', // HM-10 / CC41 BLE module
+        'e7810a71-73ae-499d-8c15-faa9aef0c3f2', // Xprinter series
+        '49535343-fe7d-4ae5-8fa9-9fafd205e455', // ISSC BLE UART
+        '0000fff0-0000-1000-8000-00805f9b34fb', // BLE Serial
+        'generic_access',
+        'generic_attribute',
+      ]
       const device = await navigator.bluetooth.requestDevice({
         acceptAllDevices: true,
-        optionalServices: ['generic_access', 'generic_attribute']
+        optionalServices: PRINTER_SERVICE_UUIDS
       })
 
       setBluetoothError(null)
@@ -475,29 +486,59 @@ export function POSSystem() {
     })
 
     try {
-      // Get GATT server and service
       const server = bluetoothDevice.gatt
-      const services = await server.getPrimaryServices()
 
-      // Try to find a writable characteristic
-      let writeCharacteristic = null
-      for (const service of services) {
+      // UUID service printer thermal yang umum — coba satu per satu
+      const KNOWN_SERVICE_UUIDS = [
+        '000018f0-0000-1000-8000-00805f9b34fb',
+        '0000ff00-0000-1000-8000-00805f9b34fb',
+        '0000ffe0-0000-1000-8000-00805f9b34fb',
+        'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+        '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+        '0000fff0-0000-1000-8000-00805f9b34fb',
+      ]
+
+      // Cari writable characteristic dari service yang dikenal
+      let writeCharacteristic: BluetoothRemoteGATTCharacteristic | null = null
+      for (const serviceUuid of KNOWN_SERVICE_UUIDS) {
         try {
+          const service = await server.getPrimaryService(serviceUuid)
           const characteristics = await service.getCharacteristics()
           for (const char of characteristics) {
-            if (char.properties.write || char.properties.writeWithoutResponse) {
+            if (char.properties.writeWithoutResponse || char.properties.write) {
               writeCharacteristic = char
+              console.log('✅ Printer service found:', serviceUuid, 'char:', char.uuid)
               break
             }
           }
           if (writeCharacteristic) break
-        } catch (e) {
+        } catch {
+          // Service ini tidak ada di printer ini, lanjut ke berikutnya
           continue
         }
       }
 
+      // Fallback: coba getPrimaryServices() jika tidak ada yang cocok
       if (!writeCharacteristic) {
-        throw new Error("Tidak dapat menemukan characteristic untuk menulis data")
+        try {
+          const services = await server.getPrimaryServices()
+          for (const service of services) {
+            try {
+              const chars = await service.getCharacteristics()
+              for (const char of chars) {
+                if (char.properties.writeWithoutResponse || char.properties.write) {
+                  writeCharacteristic = char
+                  break
+                }
+              }
+              if (writeCharacteristic) break
+            } catch { continue }
+          }
+        } catch { /* ignore */ }
+      }
+
+      if (!writeCharacteristic) {
+        throw new Error("Printer tidak mendukung write. Pastikan printer thermal ESC/POS dan sudah terpasang dengan benar.")
       }
 
       // Build receipt text for thermal printer
