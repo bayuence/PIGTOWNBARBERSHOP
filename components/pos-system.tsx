@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { getUserSession } from "@/lib/auth"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -173,8 +174,15 @@ export function POSSystem() {
       console.error("Users error:", error)
     } else if (data && data.length > 0) {
       setEmployees(data)
-      // Set current user ke user pertama yang ada
-      if (!currentUser) setCurrentUser(data[0])
+      // Gunakan user dari session login jika ada, jika tidak ada baru fallback ke data[0]
+      if (!currentUser) {
+        const session = getUserSession()
+        if (session) {
+          setCurrentUser(session)
+        } else {
+          setCurrentUser(data[0])
+        }
+      }
     }
   }, [currentUser])
 
@@ -382,7 +390,6 @@ export function POSSystem() {
           <div style="font-size:${paperWidth === 58 ? '8px' : '9px'};">
             ${showDate ? `<div>Tanggal: ${currentTransaction.timestamp}</div>` : ''}
             <div>No: ${currentTransaction.receipt_number}</div>
-            ${showCashier ? `<div>Kasir: ${currentTransaction.employeeName}</div>` : ''}
             ${showBarber && currentTransaction.barberName ? `<div>Capster: ${currentTransaction.barberName}</div>` : ''}
             ${showCustomer && currentTransaction.customer_name ? `<div>Customer: ${currentTransaction.customer_name}</div>` : ''}
           </div>
@@ -541,6 +548,30 @@ export function POSSystem() {
         throw new Error("Printer tidak mendukung write. Pastikan printer thermal ESC/POS dan sudah terpasang dengan benar.")
       }
 
+      // Helper function to wrap text by words
+      const wrapText = (textStr: string, maxLength: number): string[] => {
+        const paragraphLines = textStr.split('\n')
+        const result: string[] = []
+        for (const paragraphLine of paragraphLines) {
+          const words = paragraphLine.split(/\s+/)
+          let currentLine = ""
+          for (const word of words) {
+            if (!word) continue
+            if ((currentLine + (currentLine ? " " : "") + word).length > maxLength) {
+              if (currentLine) result.push(currentLine)
+              currentLine = word
+            } else {
+              currentLine += (currentLine ? " " : "") + word
+            }
+          }
+          if (currentLine) result.push(currentLine)
+          if (paragraphLine.trim() === "" && words.length <= 1) {
+            result.push("")
+          }
+        }
+        return result
+      }
+
       // Build receipt text for thermal printer
       const encoder = new TextEncoder()
       const ESC = "\x1B"
@@ -550,14 +581,17 @@ export function POSSystem() {
       const BOLD_ON = ESC + "E1"
       const BOLD_OFF = ESC + "E0"
       const CUT = ESC + "i" // Cut paper
-      const LINE = "--------------------------------\n"
+
+      const paperWidth = receiptTemplate?.paper_width
+        || (receiptTemplate?.paper_size === '58mm' ? 58 : 80)
+      const maxChars = paperWidth === 58 ? 32 : 48
+      const LINE = "-".repeat(maxChars) + "\n"
 
       // Default values when no template
       const showAddress = receiptTemplate?.show_address ?? true
       const showPhone = receiptTemplate?.show_phone ?? true
       const showDate = receiptTemplate?.show_date ?? true
       const showBarber = receiptTemplate?.show_barber ?? true
-      const showCashierBT = receiptTemplate?.show_cashier ?? true
       const showCustomer = receiptTemplate?.show_customer ?? true
 
       let receiptText = INIT
@@ -565,14 +599,20 @@ export function POSSystem() {
       // Header
       receiptText += ALIGN_CENTER + BOLD_ON
       if (receiptTemplate?.header_text) {
-        receiptText += receiptTemplate.header_text + "\n"
+        const headerLines = wrapText(receiptTemplate.header_text, maxChars)
+        headerLines.forEach(line => {
+          receiptText += line + "\n"
+        })
       } else {
         receiptText += "PIGTOWN BARBERSHOP\n"
       }
       receiptText += BOLD_OFF
 
       if (showAddress && branchInfo?.address) {
-        receiptText += branchInfo.address + "\n"
+        const addressLines = wrapText(branchInfo.address, maxChars)
+        addressLines.forEach(line => {
+          receiptText += line + "\n"
+        })
       }
       if (showPhone && branchInfo?.phone) {
         receiptText += "Telp: " + branchInfo.phone + "\n"
@@ -586,9 +626,6 @@ export function POSSystem() {
         receiptText += "Tanggal: " + currentTransaction.timestamp + "\n"
       }
       receiptText += "No: " + currentTransaction.receipt_number + "\n"
-      if (showCashierBT) {
-        receiptText += "Kasir: " + currentTransaction.employeeName + "\n"
-      }
       if (showBarber && currentTransaction.barberName) {
         receiptText += "Capster: " + currentTransaction.barberName + "\n"
       }
@@ -601,25 +638,29 @@ export function POSSystem() {
       // Items
       for (const item of currentTransaction.items) {
         receiptText += item.service.name + "\n"
-        receiptText += `${item.quantity} x Rp ${formatRupiah(item.service.price.toString())}`
-        receiptText += " ".repeat(Math.max(0, 32 - (`${item.quantity} x Rp ${formatRupiah(item.service.price.toString())}`.length + `Rp ${formatRupiah((item.service.price * item.quantity).toString())}`.length)))
-        receiptText += `Rp ${formatRupiah((item.service.price * item.quantity).toString())}\n`
+        const leftText = `${item.quantity} x Rp ${formatRupiah(item.service.price.toString())}`
+        const rightText = `Rp ${formatRupiah((item.service.price * item.quantity).toString())}`
+        const spaceNeeded = maxChars - (leftText.length + rightText.length)
+        receiptText += leftText + " ".repeat(Math.max(0, spaceNeeded)) + rightText + "\n"
       }
 
       receiptText += LINE
 
       // Total
-      receiptText += `Subtotal:` + " ".repeat(Math.max(0, 32 - (`Subtotal:`.length + `Rp ${formatRupiah(currentTransaction.subtotal)}`.length)))
-      receiptText += `Rp ${formatRupiah(currentTransaction.subtotal)}\n`
+      const subtotalText = `Rp ${formatRupiah(currentTransaction.subtotal)}`
+      receiptText += `Subtotal:` + " ".repeat(Math.max(0, maxChars - (`Subtotal:`.length + subtotalText.length)))
+      receiptText += subtotalText + "\n"
 
       if (currentTransaction.discount_amount > 0) {
-        receiptText += `Diskon:` + " ".repeat(Math.max(0, 32 - (`Diskon:`.length + `-Rp ${formatRupiah(currentTransaction.discount_amount)}`.length)))
-        receiptText += `-Rp ${formatRupiah(currentTransaction.discount_amount)}\n`
+        const discountText = `-Rp ${formatRupiah(currentTransaction.discount_amount)}`
+        receiptText += `Diskon:` + " ".repeat(Math.max(0, maxChars - (`Diskon:`.length + discountText.length)))
+        receiptText += discountText + "\n"
       }
 
       receiptText += BOLD_ON
-      receiptText += `TOTAL:` + " ".repeat(Math.max(0, 32 - (`TOTAL:`.length + `Rp ${formatRupiah(currentTransaction.total_amount.toString())}`.length)))
-      receiptText += `Rp ${formatRupiah(currentTransaction.total_amount.toString())}\n`
+      const totalText = `Rp ${formatRupiah(currentTransaction.total_amount.toString())}`
+      receiptText += `TOTAL:` + " ".repeat(Math.max(0, maxChars - (`TOTAL:`.length + totalText.length)))
+      receiptText += totalText + "\n"
       receiptText += BOLD_OFF
 
       receiptText += `Pembayaran: ${currentTransaction.payment_method}\n`
@@ -635,7 +676,10 @@ export function POSSystem() {
       // Footer
       receiptText += ALIGN_CENTER
       if (receiptTemplate?.footer_text) {
-        receiptText += receiptTemplate.footer_text + "\n"
+        const footerLines = wrapText(receiptTemplate.footer_text, maxChars)
+        footerLines.forEach(line => {
+          receiptText += line + "\n"
+        })
       } else {
         receiptText += "Terima kasih atas kunjungan Anda!\n"
       }

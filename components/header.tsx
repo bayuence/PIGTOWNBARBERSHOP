@@ -50,8 +50,8 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
 
   return (
     <header className={`sticky top-0 z-30 px-4 md:px-6 py-2 md:py-4 transition-all duration-300 ${isScrolled
-        ? "bg-gradient-to-r from-red-900 via-red-800 to-black shadow-xl border-b border-red-900 backdrop-blur-sm"
-        : "bg-gradient-to-r from-red-900 via-red-800 to-black border-b border-red-800"
+      ? "bg-gradient-to-r from-red-900 via-red-800 to-black shadow-xl border-b border-red-900 backdrop-blur-sm"
+      : "bg-gradient-to-r from-red-900 via-red-800 to-black border-b border-red-800"
       }`}>
       <div className="flex items-center justify-between">
         {/* Menu Button - Modern Circular Style untuk Mobile */}
