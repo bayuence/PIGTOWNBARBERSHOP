@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -106,6 +106,12 @@ export function POSSystem() {
   const [bluetoothError, setBluetoothError] = useState<string | null>(null)
   const [outletStock, setOutletStock] = useState<OutletStock[]>([])
   const [stockLoading, setStockLoading] = useState(false)
+  // Ref untuk menyimpan device agar bisa auto-reconnect tanpa kehilangan referensi
+  const bluetoothDeviceRef = useRef<BluetoothDevice | null>(null)
+  // Ref untuk mencegah listener gattserverdisconnected duplikat
+  const gattListenerAttached = useRef(false)
+  // Ref untuk menandai apakah user sengaja disconnect (bukan karena printer idle)
+  const intentionalDisconnect = useRef(false)
 
   const categoryIcons = {
     "Potong Rambut": Scissors,
@@ -280,13 +286,45 @@ export function POSSystem() {
   }
 
   const handleDisconnectBluetooth = () => {
-    if (bluetoothDevice && bluetoothDevice.gatt?.connected) {
-      bluetoothDevice.gatt.disconnect()
+    intentionalDisconnect.current = true
+    if (bluetoothDeviceRef.current && bluetoothDeviceRef.current.gatt?.connected) {
+      bluetoothDeviceRef.current.gatt.disconnect()
     }
     setBluetoothConnected(false)
     setBluetoothDevice(null)
     setBluetoothCharacteristic(null)
+    bluetoothDeviceRef.current = null
+    gattListenerAttached.current = false
   }
+
+  // Auto-reconnect ke printer yang sama setelah koneksi terputus (misal setelah print)
+  const handleAutoReconnect = useCallback(async (device: BluetoothDevice, retries = 3) => {
+    if (intentionalDisconnect.current) return
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        console.log(`🔄 Auto-reconnect attempt ${attempt}/${retries} ke ${device.name}...`)
+        await new Promise(resolve => setTimeout(resolve, 800 * attempt)) // backoff
+        if (intentionalDisconnect.current) return
+        await device.gatt?.connect()
+        setBluetoothConnected(true)
+        setBluetoothDevice(device)
+        console.log(`✅ Auto-reconnect berhasil ke ${device.name}`)
+        toast.success("Printer Tersambung Kembali 🖨️", {
+          description: `Koneksi ke ${device.name} dipulihkan otomatis`,
+          duration: 3000,
+        })
+        return
+      } catch (err) {
+        console.warn(`Auto-reconnect attempt ${attempt} gagal:`, err)
+      }
+    }
+    // Semua retry gagal
+    setBluetoothConnected(false)
+    toast.warning("Printer Terputus", {
+      description: "Koneksi Bluetooth terputus. Hubungkan kembali secara manual jika diperlukan.",
+      duration: 5000,
+    })
+  }, [])
 
   const handleScanAndConnect = async () => {
     setBluetoothError(null)
@@ -315,23 +353,29 @@ export function POSSystem() {
       })
 
       setBluetoothError(null)
+      intentionalDisconnect.current = false
+
+      // Simpan ke ref agar listener bisa akses tanpa closure stale
+      bluetoothDeviceRef.current = device
       setBluetoothDevice(device)
 
-      const server = await device.gatt?.connect()
+      await device.gatt?.connect()
       setBluetoothConnected(true)
+
+      // Pasang listener hanya SATU KALI per device
+      if (!gattListenerAttached.current) {
+        gattListenerAttached.current = true
+        device.addEventListener("gattserverdisconnected", () => {
+          if (intentionalDisconnect.current) return
+          // Tandai belum connect dulu, lalu coba reconnect
+          setBluetoothConnected(false)
+          handleAutoReconnect(device)
+        })
+      }
 
       setIsBluetoothOpen(false)
       toast.success("Berhasil Terhubung! 📱", {
         description: `Terhubung ke printer ${device.name}`,
-      })
-
-      device.addEventListener("gattserverdisconnected", () => {
-        setBluetoothConnected(false)
-        setBluetoothDevice(null)
-        setBluetoothCharacteristic(null)
-        toast.warning("Printer Terputus", {
-          description: "Koneksi Bluetooth terputus",
-        })
       })
     } catch (error) {
       console.error("Kesalahan Bluetooth:", error)
@@ -521,11 +565,29 @@ export function POSSystem() {
   }, [isPrinting, currentTransaction, receiptTemplate])
 
   const handlePrintViaBluetooth = async () => {
-    if (!bluetoothDevice || !bluetoothDevice.gatt?.connected || !currentTransaction) {
+    // Gunakan ref sebagai fallback jika state device sudah null tapi ref masih ada
+    const device = bluetoothDevice || bluetoothDeviceRef.current
+    if (!device || !currentTransaction) {
       toast.error("Printer Tidak Siap", {
         description: "Printer Bluetooth tidak terhubung atau data transaksi tidak tersedia",
       })
       return
+    }
+    // Reconnect otomatis jika GATT terputus sebelum print
+    if (!device.gatt?.connected) {
+      try {
+        toast.loading("Menyambung ulang ke printer...", { id: "bt-reconnect" })
+        await device.gatt?.connect()
+        setBluetoothConnected(true)
+        setBluetoothDevice(device)
+        toast.dismiss("bt-reconnect")
+      } catch {
+        toast.dismiss("bt-reconnect")
+        toast.error("Printer Tidak Terhubung", {
+          description: "Gagal menyambung ulang ke printer. Silakan hubungkan kembali.",
+        })
+        return
+      }
     }
     if (isPrinting) return
     setIsPrinting(true)
@@ -535,7 +597,9 @@ export function POSSystem() {
     })
 
     try {
-      const server = bluetoothDevice.gatt
+      const device = bluetoothDevice || bluetoothDeviceRef.current
+      if (!device) throw new Error("Perangkat printer tidak ditemukan")
+      const server = device.gatt
 
       // UUID service printer thermal yang umum — coba satu per satu
       const KNOWN_SERVICE_UUIDS = [
@@ -727,8 +791,9 @@ export function POSSystem() {
       await sendChunked(writeCharacteristic, data)
 
       toast.dismiss("bluetooth-print")
+      const deviceName = (bluetoothDevice || bluetoothDeviceRef.current)?.name || "Printer"
       toast.success("Print via Bluetooth Berhasil! 🖨️", {
-        description: `Struk berhasil dicetak ke printer thermal ${bluetoothDevice.name}`,
+        description: `Struk berhasil dicetak ke printer thermal ${deviceName}`,
         duration: 5000,
       })
     } catch (error) {

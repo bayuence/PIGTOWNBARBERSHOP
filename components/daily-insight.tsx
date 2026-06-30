@@ -278,18 +278,37 @@ export function DailyInsight() {
   const metrics = useMemo(() => {
     const totalRevenue = transactions.reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0)
     
-    // Payment methods breakdown
-    const qrisTotal = transactions
-      .filter((t) => t.payment_method?.toLowerCase() === "qris")
-      .reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0)
-      
-    const cashTotal = transactions
-      .filter((t) => ["cash", "tunai"].includes(t.payment_method?.toLowerCase()))
-      .reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0)
-      
-    const transferTotal = transactions
-      .filter((t) => ["transfer", "bank_transfer", "bank"].includes(t.payment_method?.toLowerCase()))
-      .reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0)
+    // Payment methods breakdown including Split payments
+    let qrisTotal = 0
+    let cashTotal = 0
+    let transferTotal = 0
+
+    transactions.forEach((t) => {
+      const method = t.payment_method?.toLowerCase()
+      const amount = Number(t.total_amount) || 0
+
+      if (method === "qris") {
+        qrisTotal += amount
+      } else if (["cash", "tunai"].includes(method)) {
+        cashTotal += amount
+      } else if (["transfer", "bank_transfer", "bank"].includes(method)) {
+        transferTotal += amount
+      } else if (method === "split") {
+        try {
+          if (t.notes && t.notes.startsWith("{")) {
+            const split = JSON.parse(t.notes)
+            cashTotal += Number(split.split_cash) || 0
+            qrisTotal += Number(split.split_qris) || 0
+          } else {
+            cashTotal += amount / 2
+            qrisTotal += amount / 2
+          }
+        } catch (e) {
+          cashTotal += amount / 2
+          qrisTotal += amount / 2
+        }
+      }
+    })
 
     const totalExpenses = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
     const totalKasbon = kasbonList.reduce((sum, k) => sum + (Number(k.amount) || 0), 0)
@@ -904,6 +923,8 @@ export function DailyInsight() {
                       badgeColor = "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
                     } else if (["transfer", "bank_transfer", "bank"].includes(payMethod)) {
                       badgeColor = "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+                    } else if (payMethod === "split") {
+                      badgeColor = "bg-orange-100 text-orange-850 dark:bg-orange-900/30 dark:text-orange-400"
                     }
 
                     return (
@@ -919,9 +940,23 @@ export function DailyInsight() {
                         <TableCell className="text-slate-600 dark:text-slate-400">{trx.cashier_name || "N/A"}</TableCell>
                         <TableCell className="font-semibold text-slate-800 dark:text-slate-200">{trx.server_name || "N/A"}</TableCell>
                         <TableCell>
-                          <Badge className={`${badgeColor} uppercase text-[10px] font-bold border-none`}>
-                            {trx.payment_method || "N/A"}
-                          </Badge>
+                          <div className="flex flex-col items-start gap-1">
+                            <Badge className={`${badgeColor} uppercase text-[10px] font-bold border-none`}>
+                              {trx.payment_method === "split" ? "Split Pay" : trx.payment_method || "N/A"}
+                            </Badge>
+                            {trx.payment_method === "split" && trx.notes && trx.notes.startsWith("{") && (() => {
+                              try {
+                                const split = JSON.parse(trx.notes)
+                                return (
+                                  <span className="text-[9px] text-slate-500 font-semibold leading-none">
+                                    T: {formatRupiah(split.split_cash)} | Q: {formatRupiah(split.split_qris)}
+                                  </span>
+                                )
+                              } catch (e) {
+                                return null
+                              }
+                            })()}
+                          </div>
                         </TableCell>
                         <TableCell className="text-right font-bold text-slate-800 dark:text-slate-200">
                           {formatRupiah(trx.total_amount)}
