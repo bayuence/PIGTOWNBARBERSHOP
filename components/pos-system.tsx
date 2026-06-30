@@ -662,7 +662,6 @@ export function POSSystem() {
       }
 
       // Build receipt text for thermal printer
-      const encoder = new TextEncoder()
       const ESC = "\x1B"
       const INIT = ESC + "@" // Initialize printer
       const ALIGN_CENTER = ESC + "a1"
@@ -673,21 +672,23 @@ export function POSSystem() {
       const LINE = "--------------------------------\n"
       const BT_WIDTH = 32 // Max chars per line for thermal
 
-      // Helper: word-wrap text to fit BT_WIDTH
+      // Helper: word-wrap text to fit BT_WIDTH, respecting existing newlines
       const wrapBT = (text: string): string => {
-        const words = text.split(' ')
-        const lines: string[] = []
-        let current = ''
-        for (const word of words) {
-          if ((current + (current ? ' ' : '') + word).length <= BT_WIDTH) {
-            current += (current ? ' ' : '') + word
-          } else {
-            if (current) lines.push(current)
-            current = word
+        return text.split('\n').map(line => {
+          const words = line.split(' ')
+          const lines: string[] = []
+          let current = ''
+          for (const word of words) {
+            if ((current + (current ? ' ' : '') + word).length <= BT_WIDTH) {
+              current += (current ? ' ' : '') + word
+            } else {
+              if (current) lines.push(current)
+              current = word
+            }
           }
-        }
-        if (current) lines.push(current)
-        return lines.join('\n')
+          if (current) lines.push(current)
+          return lines.join('\n')
+        }).join('\n')
       }
 
       // Helper: pad left/right (right-align value)
@@ -702,86 +703,164 @@ export function POSSystem() {
       const showDate = receiptTemplate?.show_date ?? true
       const showBarber = receiptTemplate?.show_barber ?? true
       const showCustomer = receiptTemplate?.show_customer ?? true
+      const showLogoOnBT = (receiptTemplate?.show_logo ?? false) || !!(receiptTemplate?.logo_url)
 
-      let receiptText = INIT
+      // ── ESC/POS Bitmap logo helper ──────────────────────────────────
+      // Converts an image URL to ESC/POS GS v 0 raster command bytes
+      const buildLogoBitmap = async (imgUrl: string): Promise<Uint8Array | null> => {
+        try {
+          // Max print width in dots: 58mm≈384dots, 80mm≈576dots
+          const paperDots = 384 // safe default for most 58mm/80mm printers
+          const maxH = 120 // max logo height in dots
 
-      // Header
-      receiptText += ALIGN_CENTER + BOLD_ON
-      if (receiptTemplate?.header_text) {
-        receiptText += receiptTemplate.header_text + "\n"
-      } else {
-        receiptText += "PIGTOWN BARBERSHOP\n"
+          const img = new Image()
+          img.crossOrigin = 'anonymous'
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve()
+            img.onerror = reject
+            img.src = imgUrl
+          })
+
+          const scale = Math.min(paperDots / img.width, maxH / img.height, 1)
+          const printW = Math.floor(img.width * scale)
+          const printH = Math.floor(img.height * scale)
+
+          // Round printW up to nearest 8 (byte boundary)
+          const bytesPerRow = Math.ceil(printW / 8)
+          const alignedW = bytesPerRow * 8
+
+          const canvas = document.createElement('canvas')
+          canvas.width = alignedW
+          canvas.height = printH
+          const ctx = canvas.getContext('2d')!
+          ctx.fillStyle = '#ffffff'
+          ctx.fillRect(0, 0, alignedW, printH)
+          ctx.drawImage(img, 0, 0, printW, printH)
+
+          const imageData = ctx.getImageData(0, 0, alignedW, printH)
+          const pixels = imageData.data
+
+          // GS v 0 command: ESC/POS raster bit image
+          // Format: GS 'v' '0' m xL xH yL yH [data]
+          const GS = 0x1D
+          const header = [GS, 0x76, 0x30, 0x00,
+            bytesPerRow & 0xFF, (bytesPerRow >> 8) & 0xFF,
+            printH & 0xFF, (printH >> 8) & 0xFF
+          ]
+
+          const bitmapData: number[] = []
+          for (let y = 0; y < printH; y++) {
+            for (let bx = 0; bx < bytesPerRow; bx++) {
+              let byte = 0
+              for (let bit = 0; bit < 8; bit++) {
+                const x = bx * 8 + bit
+                const idx = (y * alignedW + x) * 4
+                const r = pixels[idx], g = pixels[idx + 1], b = pixels[idx + 2]
+                // luminance threshold: dark pixels = 1 (print dot)
+                const lum = 0.299 * r + 0.587 * g + 0.114 * b
+                if (lum < 128) byte |= (0x80 >> bit)
+              }
+              bitmapData.push(byte)
+            }
+          }
+
+          return new Uint8Array([...header, ...bitmapData])
+        } catch (e) {
+          console.warn('Logo bitmap conversion failed:', e)
+          return null
+        }
       }
-      receiptText += BOLD_OFF
+
+      // ── Build receipt as byte array (supports mixing text + binary bitmap) ──
+      const allBytes: number[] = []
+      const textEncoder = new TextEncoder()
+      const pushText = (s: string) => allBytes.push(...textEncoder.encode(s))
+      const pushBytes = (b: Uint8Array) => allBytes.push(...b)
+
+      // Initialize printer
+      pushText(INIT)
+
+      // Logo bitmap (if available) - sent as ESC/POS GS v 0 raster
+      if (showLogoOnBT && receiptTemplate?.logo_url) {
+        toast.loading("Memuat logo untuk dicetak...", { id: "bluetooth-print" })
+        const logoBitmap = await buildLogoBitmap(receiptTemplate.logo_url)
+        if (logoBitmap) {
+          pushText(ALIGN_CENTER)
+          pushBytes(logoBitmap)
+          pushText('\n')
+        }
+        toast.loading("Mencetak via Bluetooth...", { id: "bluetooth-print" })
+      }
+
+      // Header text
+      pushText(ALIGN_CENTER + BOLD_ON)
+      if (receiptTemplate?.header_text) {
+        pushText(wrapBT(receiptTemplate.header_text) + '\n')
+      } else {
+        pushText('PIGTOWN BARBERSHOP\n')
+      }
+      pushText(BOLD_OFF)
 
       if (showAddress && branchInfo?.address) {
-        receiptText += wrapBT(branchInfo.address) + "\n"
+        pushText(wrapBT(branchInfo.address) + '\n')
       }
       if (showPhone && branchInfo?.phone) {
-        receiptText += "Telp: " + branchInfo.phone + "\n"
+        pushText('Telp: ' + branchInfo.phone + '\n')
       }
 
-      receiptText += LINE
+      pushText(LINE)
 
       // Transaction info
-      receiptText += ALIGN_LEFT
-      if (showDate) {
-        receiptText += "Tanggal: " + currentTransaction.timestamp + "\n"
-      }
-      receiptText += "No: " + currentTransaction.receipt_number + "\n"
-      if (showBarber && currentTransaction.barberName) {
-        receiptText += "Kasir/Capster: " + currentTransaction.barberName + "\n"
-      }
-      if (showCustomer && currentTransaction.customer_name) {
-        receiptText += "Customer: " + currentTransaction.customer_name + "\n"
-      }
+      pushText(ALIGN_LEFT)
+      if (showDate) pushText('Tanggal: ' + currentTransaction.timestamp + '\n')
+      pushText('No: ' + currentTransaction.receipt_number + '\n')
+      if (showBarber && currentTransaction.barberName) pushText('Kasir/Capster: ' + currentTransaction.barberName + '\n')
+      if (showCustomer && currentTransaction.customer_name) pushText('Customer: ' + currentTransaction.customer_name + '\n')
 
-      receiptText += LINE
+      pushText(LINE)
 
       // Items
       for (const item of currentTransaction.items) {
-        receiptText += item.service.name + "\n"
+        pushText(item.service.name + '\n')
         const qtyLabel = `${item.quantity} x Rp ${formatRupiah(item.service.price.toString())}`
         const totalLabel = `Rp ${formatRupiah((item.service.price * item.quantity).toString())}`
-        receiptText += padLR(qtyLabel, totalLabel) + "\n"
+        pushText(padLR(qtyLabel, totalLabel) + '\n')
       }
 
-      receiptText += LINE
+      pushText(LINE)
 
-      // Total
+      // Totals
       const subtotalLabel = `Rp ${formatRupiah(currentTransaction.subtotal)}`
-      receiptText += padLR('Subtotal:', subtotalLabel) + "\n"
+      pushText(padLR('Subtotal:', subtotalLabel) + '\n')
 
       if (currentTransaction.discount_amount > 0) {
         const diskonLabel = `-Rp ${formatRupiah(currentTransaction.discount_amount)}`
-        receiptText += padLR('Diskon:', diskonLabel) + "\n"
+        pushText(padLR('Diskon:', diskonLabel) + '\n')
       }
 
-      receiptText += BOLD_ON
+      pushText(BOLD_ON)
       const totalLabel2 = `Rp ${formatRupiah(currentTransaction.total_amount.toString())}`
-      receiptText += padLR('TOTAL:', totalLabel2) + "\n"
-      receiptText += BOLD_OFF
+      pushText(padLR('TOTAL:', totalLabel2) + '\n')
+      pushText(BOLD_OFF)
 
-      receiptText += `Pembayaran: ${currentTransaction.payment_method}\n`
+      pushText(`Pembayaran: ${currentTransaction.payment_method}\n`)
 
-      // Cash details for cash payment
       if (currentTransaction.payment_method === 'cash' && currentTransaction.cash_amount) {
-        receiptText += padLR('Uang Diterima:', `Rp ${formatRupiah(currentTransaction.cash_amount.toString())}`) + "\n"
-        receiptText += padLR('Kembalian:', `Rp ${formatRupiah((currentTransaction.change_amount || 0).toString())}`) + "\n"
+        pushText(padLR('Uang Diterima:', `Rp ${formatRupiah(currentTransaction.cash_amount.toString())}`) + '\n')
+        pushText(padLR('Kembalian:', `Rp ${formatRupiah((currentTransaction.change_amount || 0).toString())}`) + '\n')
       }
 
-      receiptText += LINE
+      pushText(LINE)
 
-      // Footer — wrap to fit 32 chars
-      receiptText += ALIGN_CENTER
-      const footerRaw = receiptTemplate?.footer_text || 'Terima kasih & sampai jumpa!'
-      receiptText += wrapBT(footerRaw) + "\n"
-
-      receiptText += "\n\n\n" // Add spacing before cut
-      receiptText += CUT // Cut paper
+      // Footer
+      pushText(ALIGN_CENTER)
+      const footerRaw = receiptTemplate?.footer_text || 'Terima kasih atas kunjungan Anda!'
+      pushText(wrapBT(footerRaw) + '\n')
+      pushText('\n\n\n')
+      pushText(CUT)
 
       // Send to printer in chunks (BLE max per-packet is typically 20 bytes)
-      const data = encoder.encode(receiptText)
+      const data = new Uint8Array(allBytes)
       const CHUNK_SIZE = 20
       const sendChunked = async (characteristic: BluetoothRemoteGATTCharacteristic, buffer: Uint8Array) => {
         for (let offset = 0; offset < buffer.length; offset += CHUNK_SIZE) {
