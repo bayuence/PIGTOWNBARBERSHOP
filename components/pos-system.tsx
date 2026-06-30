@@ -707,11 +707,12 @@ export function POSSystem() {
 
       // ── ESC/POS Bitmap logo helper ──────────────────────────────────
       // Converts an image URL to ESC/POS GS v 0 raster command bytes
+      // TM-58V: 58mm paper, 384 dots max width, 203 DPI
       const buildLogoBitmap = async (imgUrl: string): Promise<Uint8Array | null> => {
         try {
-          // Max print width in dots: 58mm≈384dots, 80mm≈576dots
-          const paperDots = 384 // safe default for most 58mm/80mm printers
-          const maxH = 120 // max logo height in dots
+          // TM-58V: 58mm paper = 384 printable dots (48mm × 8 dots/mm)
+          const paperDots = 384
+          const maxH = 80 // keep logo small to avoid BLE buffer overflow
 
           const img = new Image()
           img.crossOrigin = 'anonymous'
@@ -859,9 +860,11 @@ export function POSSystem() {
       pushText('\n\n\n')
       pushText(CUT)
 
-      // Send to printer in chunks (BLE max per-packet is typically 20 bytes)
+      // Send to printer in chunks
+      // TM-58V via BLE: use 128-byte chunks (modern BLE supports larger MTU)
+      // with extra delay for large binary data
       const data = new Uint8Array(allBytes)
-      const CHUNK_SIZE = 20
+      const CHUNK_SIZE = 128
       const sendChunked = async (characteristic: BluetoothRemoteGATTCharacteristic, buffer: Uint8Array) => {
         for (let offset = 0; offset < buffer.length; offset += CHUNK_SIZE) {
           const chunk = buffer.slice(offset, offset + CHUNK_SIZE)
@@ -870,8 +873,8 @@ export function POSSystem() {
           } else {
             await characteristic.writeValue(chunk)
           }
-          // Small delay between chunks to avoid overflowing printer buffer
-          await new Promise(resolve => setTimeout(resolve, 30))
+          // 50ms delay between chunks — necessary for bitmap data over slow BLE
+          await new Promise(resolve => setTimeout(resolve, 50))
         }
       }
       await sendChunked(writeCharacteristic, data)
