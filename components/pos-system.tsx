@@ -416,11 +416,12 @@ export function POSSystem() {
         return lines.join('\n')
       }
 
-      const buildReceiptHTML = () => {
+      const buildReceiptHTML = (resolvedLogoSrc?: string | null) => {
         if (!currentTransaction) return '<div>Tidak ada data transaksi</div>'
 
         // Default values when no template
-        const showLogo = receiptTemplate?.show_logo ?? false
+        // Treat show_logo as true if logo_url exists (fallback for misconfigured templates)
+        const showLogo = (receiptTemplate?.show_logo ?? false) || !!(receiptTemplate?.logo_url)
         const showAddress = receiptTemplate?.show_address ?? true
         const showPhone = receiptTemplate?.show_phone ?? true
         const showDate = receiptTemplate?.show_date ?? true
@@ -432,9 +433,11 @@ export function POSSystem() {
           ? wrapText(branchInfo.address, maxCharsPerLine).replace(/\n/g, '<br/>')
           : ''
 
+        // Use resolved base64 if available, otherwise fall back to direct URL
+        const logoSrc = resolvedLogoSrc || receiptTemplate?.logo_url || null
         const headerHTML = `
           <div style="text-align:center; margin-bottom:2mm;">
-            ${showLogo && receiptTemplate?.logo_url ? `<img src="${receiptTemplate.logo_url}" alt="Logo" style="height:${receiptTemplate?.logo_height || 40}px; width:auto; margin:0 auto 2mm; display:block;" crossorigin="anonymous" />` : ''}
+            ${showLogo && logoSrc ? `<img src="${logoSrc}" alt="Logo" style="height:${receiptTemplate?.logo_height || 40}px; width:auto; margin:0 auto 2mm; display:block;" />` : ''}
             ${receiptTemplate?.header_text
             ? `<div style="white-space:pre-line; font-weight:700; font-size:${paperWidth === 58 ? '9px' : '11px'};">${receiptTemplate.header_text}</div>`
             : `<div style="font-weight:700; font-size:${paperWidth === 58 ? '10px' : '12px'};">PIGTOWN BARBERSHOP</div>`}
@@ -503,20 +506,27 @@ export function POSSystem() {
       }
 
       // Preload logo as base64 so it renders reliably in the popup window
+      // (Fallback: treat show_logo=true whenever logo_url exists)
       let logoBase64: string | null = null
-      const showLogoFlag = receiptTemplate?.show_logo ?? false
+      const hasLogoUrl = !!(receiptTemplate?.logo_url)
+      const showLogoFlag = (receiptTemplate?.show_logo ?? false) || hasLogoUrl
       if (showLogoFlag && receiptTemplate?.logo_url) {
         try {
           const resp = await fetch(receiptTemplate.logo_url)
-          const blob = await resp.blob()
-          logoBase64 = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader()
-            reader.onload = () => resolve(reader.result as string)
-            reader.onerror = reject
-            reader.readAsDataURL(blob)
-          })
+          if (resp.ok) {
+            const blob = await resp.blob()
+            logoBase64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader()
+              reader.onload = () => resolve(reader.result as string)
+              reader.onerror = reject
+              reader.readAsDataURL(blob)
+            })
+          } else {
+            // HTTP error - fall back to direct URL
+            logoBase64 = receiptTemplate.logo_url
+          }
         } catch {
-          // If fetch fails, fall back to direct URL
+          // Network error - fall back to direct URL
           logoBase64 = receiptTemplate.logo_url
         }
       }
@@ -530,11 +540,8 @@ export function POSSystem() {
         .divider { border-top: 1px dashed #000; margin: 2mm 0; }
       `
 
-      // Re-build with the base64 logo injected
-      const receiptHTML = buildReceiptHTML().replace(
-        /src="[^"]*logo[^"]*"/,
-        logoBase64 ? `src="${logoBase64}"` : ''
-      )
+      // Pass logoBase64 directly — no fragile regex needed
+      const receiptHTML = buildReceiptHTML(logoBase64)
 
       const html = `<!doctype html><html><head><meta charset="utf-8"/><title>Struk Pembayaran</title><style>${styles}</style></head><body><div id="root">${receiptHTML}</div></body></html>`
 
@@ -1791,7 +1798,8 @@ export function POSSystem() {
                 >
                   {/* Header */}
                   <div className="text-center mb-2">
-                    {(receiptTemplate?.show_logo ?? false) && receiptTemplate?.logo_url && (
+                    {/* Tampilkan logo jika show_logo aktif ATAU jika logo_url tersedia */}
+                    {((receiptTemplate?.show_logo ?? false) || !!(receiptTemplate?.logo_url)) && receiptTemplate?.logo_url && (
                       <img src={receiptTemplate.logo_url} alt="Logo" className="h-10 w-auto mx-auto mb-2" />
                     )}
                     {receiptTemplate?.header_text ? (
