@@ -141,7 +141,8 @@ export const kasbon = pgTable('kasbon', {
   id: serial('id').primaryKey(),
   userId: integer('user_id').notNull(),
   amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
-  remainingAmount: decimal('remaining_amount', { precision: 12, scale: 2 }).notNull(),
+  paidAmount: decimal('paid_amount', { precision: 12, scale: 2 }).default('0'),
+  remainingAmount: decimal('remaining_amount', { precision: 12, scale: 2 }).notNull().default('0'),
   reason: text('reason').notNull(),
   status: text('status').notNull().default('pending'), // pending, approved, rejected, paid
   requestDate: timestamp('request_date').notNull().defaultNow(),

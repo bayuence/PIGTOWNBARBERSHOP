@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { loginWithEmail, saveUserSession } from "@/lib/auth"
+import { saveUserSession } from "@/lib/auth"
+import { loginWithEmailAction } from "@/lib/actions/auth"
 import { toast } from "sonner"
 import { Eye, EyeOff, AlertCircle } from "lucide-react"
 import Link from "next/link"
@@ -26,7 +27,7 @@ export function LoginForm() {
     setIsLoading(true)
 
     try {
-      const { user, error } = await loginWithEmail({
+      const { user, error } = await loginWithEmailAction({
         email: formData.email,
         password: formData.password,
       })

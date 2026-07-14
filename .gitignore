@@ -10,6 +10,8 @@
 # production
 /build
 
+Laporan*
+
 # debug
 npm-debug.log*
 yarn-debug.log*

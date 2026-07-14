@@ -7,7 +7,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { loginWithEmail, loginWithPin, type User, type LoginCredentials } from '@/lib/auth'
+import { type User, type LoginCredentials } from '@/lib/auth'
+import { loginWithEmailAction, loginWithPinAction } from '@/lib/actions/auth'
 
 interface UseAuthReturn {
   user: User | null
@@ -45,7 +46,7 @@ export function useAuth(): UseAuthReturn {
       setLoading(true)
       setError(null)
 
-      const { user: userData, error: loginError } = await loginWithEmail(credentials)
+      const { user: userData, error: loginError } = await loginWithEmailAction(credentials)
 
       if (loginError || !userData) {
         setError(loginError || 'Login failed')
@@ -72,7 +73,7 @@ export function useAuth(): UseAuthReturn {
       setLoading(true)
       setError(null)
 
-      const { user: userData, error: loginError } = await loginWithPin(pin, branchId)
+      const { user: userData, error: loginError } = await loginWithPinAction(pin, branchId)
 
       if (loginError || !userData) {
         setError(loginError || 'Login failed')

@@ -15,6 +15,13 @@
       "when": 1782214816599,
       "tag": "0001_sturdy_roughhouse",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784030211269,
+      "tag": "0002_minor_hannibal_king",
+      "breakpoints": true
     }
   ]
 }
