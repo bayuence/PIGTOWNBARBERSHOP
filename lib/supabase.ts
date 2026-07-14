@@ -181,6 +181,7 @@ export interface Kasbon {
   id: string
   user_id: string
   amount: number
+  paid_amount?: number
   reason?: string
   status?: string
   request_date?: string
@@ -1232,15 +1233,12 @@ export function setupEmployeeRealtime(callback: any) {
 
 export async function addEmployee(data: any) {
   try {
-    let hashedPassword = data.password
-    if (hashedPassword && !hashedPassword.startsWith('$2a$') && !hashedPassword.startsWith('$2b$')) {
-      hashedPassword = await bcrypt.hash(hashedPassword, 10)
-    }
+    let plainPassword = data.password;
 
     const insertData = {
       ...data,
       role: data.role || 'employee',
-      password: hashedPassword || '$2a$10$dummyHashDummyHashDummyHashDummyHashDummyHashDummyHa',
+      password: plainPassword || '$2a$10$dummyHashDummyHashDummyHashDummyHashDummyHashDummyHa',
     }
     
     const { data: newEmp, error } = await supabase
@@ -1259,9 +1257,7 @@ export async function addEmployee(data: any) {
 export async function updateEmployee(id: string, data: any) {
   try {
     const updateData = { ...data }
-    if (updateData.password && !updateData.password.startsWith('$2a$') && !updateData.password.startsWith('$2b$')) {
-      updateData.password = await bcrypt.hash(updateData.password, 10)
-    }
+    // Hashing has been removed intentionally per user request
 
     const { data: updatedEmp, error } = await supabase
       .from('users')

@@ -51,6 +51,7 @@ import {
   setupGlobalEventsListener,
   broadcastTransactionEvent,
 } from "@/lib/supabase"
+import { toast } from "sonner"
 
 interface Expense {
   id: string
@@ -93,6 +94,37 @@ export function PengeluaranCabang() {
     branch_id: "",
     notes: "",
   })
+
+  const [formErrors, setFormErrors] = useState({
+    description: "",
+    amount: "",
+    category: "",
+    branch_id: "",
+  })
+
+  const validateCategory = (value: string) => {
+    if (!value) return "Kategori wajib dipilih"
+    return ""
+  }
+
+  const validateBranch = (value: string) => {
+    if (!value) return "Cabang wajib dipilih"
+    return ""
+  }
+
+  const validateAmount = (value: string) => {
+    if (!value) return "Jumlah pengeluaran wajib diisi"
+    const num = Number(value.replace(/\D/g, ""))
+    if (isNaN(num) || num <= 0) return "Jumlah harus lebih dari 0"
+    return ""
+  }
+
+  const validateDescription = (value: string) => {
+    if (!value.trim()) return "Deskripsi wajib diisi"
+    if (value.trim().length < 5) return "Deskripsi minimal 5 karakter"
+    return ""
+  }
+
 
   const categories = [
     { id: "utilities", name: "Utilitas", icon: Zap, color: "bg-yellow-100 text-yellow-800" },
@@ -232,7 +264,9 @@ export function PengeluaranCabang() {
   }
 
   const formatInputNumber = (value: string) => {
-    const numbers = value.replace(/\D/g, "")
+    let numbers = value.replace(/\D/g, "")
+    // Hapus angka 0 di depan agar tidak bisa input 0 atau 0xxx
+    numbers = numbers.replace(/^0+/, "")
     return numbers.replace(/\B(?=(\d{3})+(?!\d))/g, ".")
   }
 
@@ -312,12 +346,19 @@ export function PengeluaranCabang() {
   }
 
   const handleDeleteExpense = async (id: string) => {
+    if (!window.confirm("Apakah Anda yakin ingin menghapus pengajuan ini?")) return
     try {
-      await deleteExpenseRequest(id)
+      const result = await deleteExpenseRequest(id)
+      if (result.error) {
+        toast.error("Gagal menghapus pengajuan: " + result.error.message)
+        return
+      }
       await loadData()
       await broadcastTransactionEvent('expense_deleted', { expenseId: id })
+      toast.success("Pengajuan berhasil dihapus")
     } catch (error) {
       console.error("Error deleting expense:", error)
+      toast.error("Terjadi kesalahan sistem")
     }
   }
 
@@ -330,8 +371,8 @@ export function PengeluaranCabang() {
     setCurrentExpense(expense)
     setIsViewDialogOpen(true)
   }
-
-  const totalExpenses = statistics.totalExpenses
+  const totalExpenses = filteredExpenses.reduce((sum, exp) => sum + Number(exp.amount || 0), 0)
+  const averagePerTransaction = filteredExpenses.length > 0 ? totalExpenses / filteredExpenses.length : 0
 
   if (loading) {
     return (
@@ -378,12 +419,17 @@ export function PengeluaranCabang() {
               </DialogHeader>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div className="space-y-2">
-                  <Label className="text-xs sm:text-sm">Kategori</Label>
+                  <Label className="text-xs sm:text-sm">
+                    Kategori <span className="text-red-500">*</span>
+                  </Label>
                   <Select
                     value={newExpense.category}
-                    onValueChange={(value: string) => setNewExpense({ ...newExpense, category: value })}
+                    onValueChange={(value: string) => {
+                      setNewExpense({ ...newExpense, category: value })
+                      setFormErrors({ ...formErrors, category: validateCategory(value) })
+                    }}
                   >
-                    <SelectTrigger className="text-xs sm:text-sm">
+                    <SelectTrigger className={`text-xs sm:text-sm focus-visible:ring-2 ${formErrors.category ? 'border-red-500 focus-visible:ring-red-500' : ''}`}>
                       <SelectValue placeholder="Pilih kategori" />
                     </SelectTrigger>
                     <SelectContent>
@@ -397,14 +443,25 @@ export function PengeluaranCabang() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {formErrors.category && (
+                    <div className="flex items-center gap-1 text-xs text-red-600 mt-1">
+                      <AlertCircle className="h-3 w-3" />
+                      <span>{formErrors.category}</span>
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs sm:text-sm">Cabang</Label>
+                  <Label className="text-xs sm:text-sm">
+                    Cabang <span className="text-red-500">*</span>
+                  </Label>
                   <Select
                     value={newExpense.branch_id}
-                    onValueChange={(value: string) => setNewExpense({ ...newExpense, branch_id: value })}
+                    onValueChange={(value: string) => {
+                      setNewExpense({ ...newExpense, branch_id: value })
+                      setFormErrors({ ...formErrors, branch_id: validateBranch(value) })
+                    }}
                   >
-                    <SelectTrigger className="text-xs sm:text-sm">
+                    <SelectTrigger className={`text-xs sm:text-sm focus-visible:ring-2 ${formErrors.branch_id ? 'border-red-500 focus-visible:ring-red-500' : ''}`}>
                       <SelectValue placeholder="Pilih cabang" />
                     </SelectTrigger>
                     <SelectContent>
@@ -415,29 +472,59 @@ export function PengeluaranCabang() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {formErrors.branch_id && (
+                    <div className="flex items-center gap-1 text-xs text-red-600 mt-1">
+                      <AlertCircle className="h-3 w-3" />
+                      <span>{formErrors.branch_id}</span>
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="amount" className="text-xs sm:text-sm">Jumlah</Label>
+                  <Label htmlFor="amount" className="text-xs sm:text-sm">
+                    Jumlah <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     id="amount"
                     value={newExpense.amount}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       const formatted = formatInputNumber(e.target.value)
                       setNewExpense({ ...newExpense, amount: formatted })
+                      setFormErrors({ ...formErrors, amount: validateAmount(formatted) })
                     }}
+                    onBlur={(e) => setFormErrors({ ...formErrors, amount: validateAmount(e.target.value) })}
                     placeholder="500.000"
-                    className="text-xs sm:text-sm"
+                    className={`text-xs sm:text-sm focus-visible:ring-2 ${formErrors.amount ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                    required
                   />
+                  {formErrors.amount && (
+                    <div className="flex items-center gap-1 text-xs text-red-600 mt-1">
+                      <AlertCircle className="h-3 w-3" />
+                      <span>{formErrors.amount}</span>
+                    </div>
+                  )}
                 </div>
                 <div className="col-span-1 sm:col-span-2 space-y-2">
-                  <Label htmlFor="description" className="text-xs sm:text-sm">Deskripsi</Label>
+                  <Label htmlFor="description" className="text-xs sm:text-sm">
+                    Deskripsi <span className="text-red-500">*</span>
+                  </Label>
                   <Textarea
                     id="description"
                     value={newExpense.description}
-                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewExpense({ ...newExpense, description: e.target.value })}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
+                      setNewExpense({ ...newExpense, description: e.target.value })
+                      setFormErrors({ ...formErrors, description: validateDescription(e.target.value) })
+                    }}
+                    onBlur={(e) => setFormErrors({ ...formErrors, description: validateDescription(e.target.value) })}
                     placeholder="Deskripsi detail pengeluaran..."
-                    className="text-xs sm:text-sm min-h-[80px]"
+                    className={`text-xs sm:text-sm min-h-[80px] focus-visible:ring-2 ${formErrors.description ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                    required
                   />
+                  {formErrors.description && (
+                    <div className="flex items-center gap-1 text-xs text-red-600 mt-1">
+                      <AlertCircle className="h-3 w-3" />
+                      <span>{formErrors.description}</span>
+                    </div>
+                  )}
                 </div>
                 <div className="col-span-1 sm:col-span-2 space-y-2">
                   <Label htmlFor="notes" className="text-xs sm:text-sm">Catatan (Opsional)</Label>
@@ -454,7 +541,17 @@ export function PengeluaranCabang() {
                 <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} className="text-xs sm:text-sm">
                   Batal
                 </Button>
-                <Button onClick={handleAddExpense} className="text-xs sm:text-sm">Ajukan Pengeluaran</Button>
+                <Button 
+                  onClick={handleAddExpense} 
+                  className="text-xs sm:text-sm"
+                  disabled={
+                    isLoading || 
+                    !!formErrors.category || !!formErrors.branch_id || !!formErrors.amount || !!formErrors.description ||
+                    !newExpense.category || !newExpense.branch_id || !newExpense.amount || !newExpense.description
+                  }
+                >
+                  Ajukan Pengeluaran
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -479,7 +576,7 @@ export function PengeluaranCabang() {
             <Building2 className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600" />
           </CardHeader>
           <CardContent className="p-3 sm:p-4 pt-0">
-            <div className="text-xl sm:text-2xl font-bold text-blue-600">{formatPrice(statistics.averagePerTransaction)}</div>
+            <div className="text-xl sm:text-2xl font-bold text-blue-600">{formatPrice(averagePerTransaction)}</div>
             <p className="text-xs text-muted-foreground">Per transaksi</p>
           </CardContent>
         </Card>
@@ -610,7 +707,7 @@ export function PengeluaranCabang() {
                               variant="ghost"
                               size="sm"
                               className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
-                              onClick={() => handleDeleteExpense(expense.id)}
+                              onClick={(e) => { e.stopPropagation(); handleDeleteExpense(expense.id) }}
                             >
                               <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
                             </Button>

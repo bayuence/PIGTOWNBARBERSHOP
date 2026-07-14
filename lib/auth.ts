@@ -41,7 +41,12 @@ export async function loginWithEmail(credentials: LoginCredentials): Promise<{ u
     }
 
     // Verify password with bcrypt
-    const isPasswordValid = await bcrypt.compare(credentials.password, data.password || '');
+    let isPasswordValid = false;
+    if (data.password && (data.password.startsWith('$2a$') || data.password.startsWith('$2b$'))) {
+      isPasswordValid = await bcrypt.compare(credentials.password, data.password);
+    } else {
+      isPasswordValid = credentials.password === data.password;
+    }
 
     if (!isPasswordValid) {
       return {

@@ -2,6 +2,7 @@
 
 import { supabase } from "@/lib/supabase"
 import { useState, useEffect } from "react"
+import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -248,34 +249,53 @@ export function KelolaPengeluaranCabang() {
 
   const handleApprove = async (expenseId: string) => {
     try {
-      await updateExpenseStatus(expenseId, "approved")
+      const result = await updateExpenseStatus(expenseId, "approved")
+      if (result.error) {
+        toast.error("Gagal menyetujui pengajuan: " + result.error.message)
+        return
+      }
       await loadData()
       setIsApproveDialogOpen(false)
       await broadcastTransactionEvent('expense_updated', { expenseId })
+      toast.success("Pengajuan berhasil disetujui")
     } catch (error) {
       console.error("Error approving expense:", error)
+      toast.error("Terjadi kesalahan sistem")
     }
   }
 
   const handleReject = async (expenseId: string) => {
     try {
-      await updateExpenseStatus(expenseId, "rejected", rejectReason)
+      const result = await updateExpenseStatus(expenseId, "rejected", rejectReason)
+      if (result.error) {
+        toast.error("Gagal menolak pengajuan: " + result.error.message)
+        return
+      }
       await loadData()
       setIsRejectDialogOpen(false)
       setRejectReason("")
       await broadcastTransactionEvent('expense_updated', { expenseId })
+      toast.success("Pengajuan berhasil ditolak")
     } catch (error) {
       console.error("Error rejecting expense:", error)
+      toast.error("Terjadi kesalahan sistem")
     }
   }
 
   const handleDeleteExpense = async (expenseId: string) => {
+    if (!window.confirm("Apakah Anda yakin ingin menghapus pengajuan ini?")) return
     try {
-      await deleteExpenseRequest(expenseId)
+      const result = await deleteExpenseRequest(expenseId)
+      if (result.error) {
+        toast.error("Gagal menghapus pengajuan: " + result.error.message)
+        return
+      }
       await loadData()
       await broadcastTransactionEvent('expense_deleted', { expenseId })
+      toast.success("Pengajuan berhasil dihapus")
     } catch (error) {
       console.error("Error deleting expense:", error)
+      toast.error("Terjadi kesalahan sistem")
     }
   }
 
@@ -470,7 +490,7 @@ export function KelolaPengeluaranCabang() {
                             variant="ghost"
                             size="sm"
                             className="text-red-600 hover:text-red-700"
-                            onClick={() => handleDeleteExpense(expense.id)}
+                            onClick={(e) => { e.stopPropagation(); handleDeleteExpense(expense.id) }}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>

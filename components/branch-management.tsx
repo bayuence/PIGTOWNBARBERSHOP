@@ -142,6 +142,7 @@ export default function BranchManagement() {
   const [branches, setBranches] = useState<Branch[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [totalGlobalEmployees, setTotalGlobalEmployees] = useState(0)
   const [availableManagers, setAvailableManagers] = useState<Array<{ id: number; name: string; position?: string; role?: string }>>([])
   const [selectedManagerId, setSelectedManagerId] = useState<string>("")
 
@@ -259,6 +260,18 @@ export default function BranchManagement() {
   const fetchBranches = async () => {
     try {
       setLoading(true)
+
+      // Get global employees count
+      try {
+        const { count, error: countError } = await supabase
+          .from("users")
+          .select("*", { count: 'exact', head: true });
+        if (!countError && count !== null) {
+          setTotalGlobalEmployees(count);
+        }
+      } catch (e) {}
+
+      // Get all branches
       setError(null)
       console.log("[v0] Fetching branches from database...")
 
@@ -1294,8 +1307,8 @@ export default function BranchManagement() {
             <Users className="h-3 w-3 md:h-4 md:w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent className="p-3 md:p-4 pt-0">
-            <div className="text-lg md:text-2xl font-bold">{branches.reduce((sum, b) => sum + b.employees, 0)}</div>
-            <p className="text-[10px] md:text-xs text-muted-foreground truncate">Di semua cabang</p>
+            <div className="text-lg md:text-2xl font-bold">{totalGlobalEmployees}</div>
+            <p className="text-[10px] md:text-xs text-muted-foreground truncate">Seluruh sistem</p>
           </CardContent>
         </Card>
         <Card>

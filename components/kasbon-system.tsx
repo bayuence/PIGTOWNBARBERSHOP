@@ -12,13 +12,14 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Clock, CheckCircle, XCircle, DollarSign, Plus, Eye, Calendar, Loader2, FileText, User, Edit, Trash2 } from "lucide-react"
-import { getKasbonRequests, createKasbonRequest, getEmployees, supabase, type KasbonWithUser, type User } from "@/lib/supabase"
+import { Clock, CheckCircle, XCircle, DollarSign, Plus, Eye, Calendar, Loader2, FileText, User, Edit, Trash2, AlertCircle } from "lucide-react"
+import { getKasbonRequests, createKasbonRequest, getEmployees, supabase, type KasbonWithUser, type User as DbUser } from "@/lib/supabase"
 import {
   Select,
   SelectContent,
@@ -40,7 +41,7 @@ export function KasbonSystem() {
   const [addKasbonLoading, setAddKasbonLoading] = useState(false)
   const [updateKasbonLoading, setUpdateKasbonLoading] = useState(false)
   const [myKasbonRequests, setMyKasbonRequests] = useState<KasbonWithUser[]>([])
-  const [allEmployees, setAllEmployees] = useState<User[]>([])
+  const [allEmployees, setAllEmployees] = useState<DbUser[]>([])
 
   const [newKasbon, setNewKasbon] = useState({
     user_id: "",
@@ -50,11 +51,76 @@ export function KasbonSystem() {
     notes: "",
   })
 
+  const [formErrors, setFormErrors] = useState({
+    user_id: "",
+    amount: "",
+    reason: "",
+    due_date: "",
+  })
+  const [touched, setTouched] = useState({
+    user_id: false,
+    amount: false,
+    reason: false,
+    due_date: false,
+  })
+
+  const validateUserId = (value: string) => {
+    if (!value) return "Karyawan wajib dipilih"
+    return ""
+  }
+
+  const validateAmount = (value: string) => {
+    if (!value) return "Jumlah kasbon wajib diisi"
+    const num = Number(value.replace(/\D/g, ""))
+    if (isNaN(num) || num <= 0) return "Jumlah harus lebih dari 0"
+    if (num < 10000) return "Jumlah minimal Rp 10.000"
+    return ""
+  }
+
+  const validateReason = (value: string) => {
+    if (!value.trim()) return "Alasan kasbon wajib diisi"
+    if (value.trim().length < 5) return "Alasan terlalu singkat (minimal 5 karakter)"
+    return ""
+  }
+
+  const validateDueDate = (value: string) => {
+    if (!value) return "Tanggal jatuh tempo wajib diisi"
+    const selectedDate = new Date(value)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    if (selectedDate < today) return "Tanggal jatuh tempo tidak boleh di masa lalu"
+    return ""
+  }
+
+  const isFormValid = () => {
+    return (
+      newKasbon.user_id && 
+      !validateUserId(newKasbon.user_id) &&
+      newKasbon.amount &&
+      !validateAmount(newKasbon.amount) &&
+      newKasbon.reason &&
+      !validateReason(newKasbon.reason) &&
+      newKasbon.due_date &&
+      !validateDueDate(newKasbon.due_date)
+    )
+  }
+
   const [editKasbon, setEditKasbon] = useState({
     amount: "",
     reason: "",
     due_date: "",
     notes: "",
+  })
+
+  const [editFormErrors, setEditFormErrors] = useState({
+    amount: "",
+    reason: "",
+    due_date: "",
+  })
+  const [editTouched, setEditTouched] = useState({
+    amount: false,
+    reason: false,
+    due_date: false,
   })
 
 
@@ -121,6 +187,17 @@ export function KasbonSystem() {
     }
   }
 
+  const isEditFormValid = () => {
+    return (
+      editKasbon.amount &&
+      !validateAmount(editKasbon.amount) &&
+      editKasbon.reason &&
+      !validateReason(editKasbon.reason) &&
+      editKasbon.due_date &&
+      !validateDueDate(editKasbon.due_date)
+    )
+  }
+
   const handleEditKasbon = async () => {
     if (!editingKasbon) return
     
@@ -179,14 +256,16 @@ export function KasbonSystem() {
     setEditingKasbon(kasbon)
     setEditKasbon({
       amount: kasbon.amount.toString(),
-      reason: kasbon.reason,
+      reason: kasbon.reason || "",
       due_date: kasbon.due_date || "",
       notes: kasbon.notes || "",
     })
+    setEditFormErrors({ amount: "", reason: "", due_date: "" })
+    setEditTouched({ amount: false, reason: false, due_date: false })
     setShowEditDialog(true)
   }
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status?: string) => {
     switch (status) {
       case "pending":
         return "bg-yellow-100 text-yellow-800"
@@ -201,7 +280,7 @@ export function KasbonSystem() {
     }
   }
 
-  const getStatusText = (status: string) => {
+  const getStatusText = (status?: string) => {
     switch (status) {
       case "pending":
         return "Menunggu Persetujuan"
@@ -287,13 +366,19 @@ export function KasbonSystem() {
                 </Alert>
               )}
               <div>
-                <Label htmlFor="employee" className="text-sm md:text-base">Karyawan *</Label>
+                <Label htmlFor="employee" className="text-sm md:text-base">Karyawan <span className="text-red-500">*</span></Label>
                 <Select
                   value={newKasbon.user_id}
-                  onValueChange={(value) => setNewKasbon({ ...newKasbon, user_id: value })}
+                  onValueChange={(value) => {
+                    setNewKasbon({ ...newKasbon, user_id: value })
+                    setFormErrors(prev => ({ ...prev, user_id: validateUserId(value) }))
+                  }}
+                  onOpenChange={(open) => {
+                    if (!open) setTouched(prev => ({ ...prev, user_id: true }))
+                  }}
                   disabled={addKasbonLoading}
                 >
-                  <SelectTrigger id="employee" className="text-sm md:text-base">
+                  <SelectTrigger id="employee" className={`text-sm md:text-base ${touched.user_id && formErrors.user_id ? "border-red-500 bg-red-50 focus:ring-red-500" : ""}`}>
                     <SelectValue placeholder="Pilih karyawan yang mengajukan" />
                   </SelectTrigger>
                   <SelectContent>
@@ -304,51 +389,100 @@ export function KasbonSystem() {
                     ))}
                   </SelectContent>
                 </Select>
+                {touched.user_id && formErrors.user_id && (
+                  <div className="flex items-center gap-1.5 mt-1.5 text-red-600">
+                    <AlertCircle className="h-4 w-4" />
+                    <span className="text-xs font-medium">{formErrors.user_id}</span>
+                  </div>
+                )}
               </div>
               <div>
-                <Label htmlFor="amount" className="text-sm md:text-base">Jumlah Kasbon *</Label>
+                <Label htmlFor="amount" className="text-sm md:text-base">Jumlah Kasbon <span className="text-red-500">*</span></Label>
                 <Input
                   id="amount"
                   type="text"
                   placeholder="Masukkan jumlah kasbon"
                   value={formatInputCurrency(newKasbon.amount)}
+                  onBlur={() => {
+                    setTouched(prev => ({ ...prev, amount: true }))
+                    setFormErrors(prev => ({ ...prev, amount: validateAmount(newKasbon.amount) }))
+                  }}
                   onChange={(e) => {
-                    const rawValue = parseInputCurrency(e.target.value)
+                    let rawValue = parseInputCurrency(e.target.value)
+                    rawValue = rawValue.replace(/^0+/, "") // Mencegah angka 0 di depan
                     setNewKasbon({ ...newKasbon, amount: rawValue })
+                    if (touched.amount) {
+                      setFormErrors(prev => ({ ...prev, amount: validateAmount(rawValue) }))
+                    }
                   }}
                   disabled={addKasbonLoading}
-                  className="text-base md:text-lg"
+                  className={`text-base md:text-lg ${touched.amount && formErrors.amount ? "border-red-500 bg-red-50 focus-visible:ring-red-500" : ""}`}
                 />
-                {newKasbon.amount && (
+                {touched.amount && formErrors.amount ? (
+                  <div className="flex items-center gap-1.5 mt-1.5 text-red-600">
+                    <AlertCircle className="h-4 w-4" />
+                    <span className="text-xs font-medium">{formErrors.amount}</span>
+                  </div>
+                ) : newKasbon.amount && (
                   <p className="text-sm text-muted-foreground mt-1 font-medium">
                     Preview: {formatCurrency(Number(newKasbon.amount) || 0)}
                   </p>
                 )}
               </div>
               <div>
-                <Label htmlFor="reason" className="text-sm md:text-base">Alasan Kasbon *</Label>
+                <Label htmlFor="reason" className="text-sm md:text-base">Alasan Kasbon <span className="text-red-500">*</span></Label>
                 <Textarea
                   id="reason"
-                  placeholder="Jelaskan alasan pengajuan kasbon (contoh: keperluan mendadak, biaya pengobatan, dll)"
+                  placeholder="Jelaskan alasan pengajuan kasbon (contoh: keperluan mendadak, dll)"
                   value={newKasbon.reason}
-                  onChange={(e) => setNewKasbon({ ...newKasbon, reason: e.target.value })}
+                  onBlur={() => {
+                    setTouched(prev => ({ ...prev, reason: true }))
+                    setFormErrors(prev => ({ ...prev, reason: validateReason(newKasbon.reason) }))
+                  }}
+                  onChange={(e) => {
+                    setNewKasbon({ ...newKasbon, reason: e.target.value })
+                    if (touched.reason) {
+                      setFormErrors(prev => ({ ...prev, reason: validateReason(e.target.value) }))
+                    }
+                  }}
                   disabled={addKasbonLoading}
                   rows={3}
-                  className="text-sm md:text-base"
+                  className={`text-sm md:text-base ${touched.reason && formErrors.reason ? "border-red-500 bg-red-50 focus-visible:ring-red-500" : ""}`}
                 />
+                {touched.reason && formErrors.reason && (
+                  <div className="flex items-center gap-1.5 mt-1.5 text-red-600">
+                    <AlertCircle className="h-4 w-4" />
+                    <span className="text-xs font-medium">{formErrors.reason}</span>
+                  </div>
+                )}
               </div>
               <div>
-                <Label htmlFor="due_date" className="text-sm md:text-base">Tanggal Jatuh Tempo *</Label>
+                <Label htmlFor="due_date" className="text-sm md:text-base">Tanggal Jatuh Tempo <span className="text-red-500">*</span></Label>
                 <Input
                   id="due_date"
                   type="date"
                   value={newKasbon.due_date}
-                  onChange={(e) => setNewKasbon({ ...newKasbon, due_date: e.target.value })}
+                  onBlur={() => {
+                    setTouched(prev => ({ ...prev, due_date: true }))
+                    setFormErrors(prev => ({ ...prev, due_date: validateDueDate(newKasbon.due_date) }))
+                  }}
+                  onChange={(e) => {
+                    setNewKasbon({ ...newKasbon, due_date: e.target.value })
+                    if (touched.due_date) {
+                      setFormErrors(prev => ({ ...prev, due_date: validateDueDate(e.target.value) }))
+                    }
+                  }}
                   disabled={addKasbonLoading}
-                  className="text-sm md:text-base"
+                  className={`text-sm md:text-base ${touched.due_date && formErrors.due_date ? "border-red-500 bg-red-50 focus-visible:ring-red-500" : ""}`}
                   required
                   min={new Date().toISOString().split('T')[0]}
                 />
+                {touched.due_date && formErrors.due_date && (
+                  <div className="flex items-center gap-1.5 mt-1.5 text-red-600">
+                    <AlertCircle className="h-4 w-4" />
+                    <span className="text-xs font-medium">{formErrors.due_date}</span>
+                  </div>
+                )}
               </div>
               <div>
                 <Label htmlFor="notes" className="text-sm md:text-base">Catatan Tambahan (Opsional)</Label>
@@ -362,15 +496,25 @@ export function KasbonSystem() {
                   className="text-sm md:text-base"
                 />
               </div>
-              <div className="flex justify-end gap-2 md:gap-3 pt-3 md:pt-4">
-                <Button variant="outline" onClick={() => setShowAddDialog(false)} disabled={addKasbonLoading} className="text-sm md:text-base">
+              <DialogFooter className="mt-6 sm:justify-end gap-2">
+                <Button variant="outline" onClick={() => setShowAddDialog(false)} disabled={addKasbonLoading}>
                   Batal
                 </Button>
-                <Button onClick={handleAddKasbon} className="bg-red-600 hover:bg-red-700" disabled={addKasbonLoading} className="text-sm md:text-base">
-                  {addKasbonLoading && <Loader2 className="h-4 w-4 mr-1 md:mr-2 animate-spin" />}
-                  Ajukan Kasbon
+                <Button 
+                  onClick={handleAddKasbon} 
+                  disabled={addKasbonLoading || !isFormValid()} 
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  {addKasbonLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Menyimpan...
+                    </>
+                  ) : (
+                    "Ajukan Kasbon"
+                  )}
                 </Button>
-              </div>
+              </DialogFooter>
             </div>
           </DialogContent>
         </Dialog>
@@ -391,49 +535,92 @@ export function KasbonSystem() {
                 </Alert>
               )}
               <div>
-                <Label htmlFor="edit_amount" className="text-sm md:text-base">Jumlah Kasbon *</Label>
+                <Label htmlFor="edit_amount" className="text-sm md:text-base">Jumlah Kasbon <span className="text-red-500">*</span></Label>
                 <Input
                   id="edit_amount"
                   type="text"
                   placeholder="Masukkan jumlah kasbon"
                   value={formatInputCurrency(editKasbon.amount)}
+                  onBlur={() => {
+                    setEditTouched(prev => ({ ...prev, amount: true }))
+                    setEditFormErrors(prev => ({ ...prev, amount: validateAmount(editKasbon.amount) }))
+                  }}
                   onChange={(e) => {
-                    const rawValue = parseInputCurrency(e.target.value)
+                    let rawValue = parseInputCurrency(e.target.value)
+                    rawValue = rawValue.replace(/^0+/, "")
                     setEditKasbon({ ...editKasbon, amount: rawValue })
+                    if (editTouched.amount) {
+                      setEditFormErrors(prev => ({ ...prev, amount: validateAmount(rawValue) }))
+                    }
                   }}
                   disabled={updateKasbonLoading}
-                  className="text-base md:text-lg"
+                  className={`text-base md:text-lg ${editTouched.amount && editFormErrors.amount ? "border-red-500 bg-red-50 focus-visible:ring-red-500" : ""}`}
                 />
-                {editKasbon.amount && (
+                {editTouched.amount && editFormErrors.amount ? (
+                  <div className="flex items-center gap-1.5 mt-1.5 text-red-600">
+                    <AlertCircle className="h-4 w-4" />
+                    <span className="text-xs font-medium">{editFormErrors.amount}</span>
+                  </div>
+                ) : editKasbon.amount && (
                   <p className="text-sm text-muted-foreground mt-1 font-medium">
                     Preview: {formatCurrency(Number(editKasbon.amount) || 0)}
                   </p>
                 )}
               </div>
               <div>
-                <Label htmlFor="edit_reason" className="text-sm md:text-base">Alasan Kasbon *</Label>
+                <Label htmlFor="edit_reason" className="text-sm md:text-base">Alasan Kasbon <span className="text-red-500">*</span></Label>
                 <Textarea
                   id="edit_reason"
                   placeholder="Jelaskan alasan pengajuan kasbon"
                   value={editKasbon.reason}
-                  onChange={(e) => setEditKasbon({ ...editKasbon, reason: e.target.value })}
+                  onBlur={() => {
+                    setEditTouched(prev => ({ ...prev, reason: true }))
+                    setEditFormErrors(prev => ({ ...prev, reason: validateReason(editKasbon.reason) }))
+                  }}
+                  onChange={(e) => {
+                    setEditKasbon({ ...editKasbon, reason: e.target.value })
+                    if (editTouched.reason) {
+                      setEditFormErrors(prev => ({ ...prev, reason: validateReason(e.target.value) }))
+                    }
+                  }}
                   disabled={updateKasbonLoading}
                   rows={3}
-                  className="text-sm md:text-base"
+                  className={`text-sm md:text-base ${editTouched.reason && editFormErrors.reason ? "border-red-500 bg-red-50 focus-visible:ring-red-500" : ""}`}
                 />
+                {editTouched.reason && editFormErrors.reason && (
+                  <div className="flex items-center gap-1.5 mt-1.5 text-red-600">
+                    <AlertCircle className="h-4 w-4" />
+                    <span className="text-xs font-medium">{editFormErrors.reason}</span>
+                  </div>
+                )}
               </div>
               <div>
-                <Label htmlFor="edit_due_date" className="text-sm md:text-base">Tanggal Jatuh Tempo *</Label>
+                <Label htmlFor="edit_due_date" className="text-sm md:text-base">Tanggal Jatuh Tempo <span className="text-red-500">*</span></Label>
                 <Input
                   id="edit_due_date"
                   type="date"
                   value={editKasbon.due_date}
-                  onChange={(e) => setEditKasbon({ ...editKasbon, due_date: e.target.value })}
+                  onBlur={() => {
+                    setEditTouched(prev => ({ ...prev, due_date: true }))
+                    setEditFormErrors(prev => ({ ...prev, due_date: validateDueDate(editKasbon.due_date) }))
+                  }}
+                  onChange={(e) => {
+                    setEditKasbon({ ...editKasbon, due_date: e.target.value })
+                    if (editTouched.due_date) {
+                      setEditFormErrors(prev => ({ ...prev, due_date: validateDueDate(e.target.value) }))
+                    }
+                  }}
                   disabled={updateKasbonLoading}
-                  className="text-sm md:text-base"
+                  className={`text-sm md:text-base ${editTouched.due_date && editFormErrors.due_date ? "border-red-500 bg-red-50 focus-visible:ring-red-500" : ""}`}
                   required
                   min={new Date().toISOString().split('T')[0]}
                 />
+                {editTouched.due_date && editFormErrors.due_date && (
+                  <div className="flex items-center gap-1.5 mt-1.5 text-red-600">
+                    <AlertCircle className="h-4 w-4" />
+                    <span className="text-xs font-medium">{editFormErrors.due_date}</span>
+                  </div>
+                )}
               </div>
               <div>
                 <Label htmlFor="edit_notes" className="text-sm md:text-base">Catatan Tambahan (Opsional)</Label>
@@ -555,7 +742,7 @@ export function KasbonSystem() {
                             Pengaju: {request.user?.name || "-"}
                           </p>
                           <p className="text-xs md:text-sm text-muted-foreground font-medium">
-                            Diajukan: {new Date(request.request_date).toLocaleDateString("id-ID")}
+                            Diajukan: {new Date(request.request_date || request.created_at || new Date()).toLocaleDateString("id-ID")}
                           </p>
                           <p className="text-xs md:text-sm text-muted-foreground line-clamp-1 md:max-w-96">{request.reason}</p>
                         </div>
@@ -629,14 +816,14 @@ export function KasbonSystem() {
                                   <div className="space-y-1 md:space-y-2">
                                     <Label className="text-xs md:text-sm font-semibold text-gray-700">Tanggal Pengajuan</Label>
                                     <p className="text-sm md:text-base">
-                                      {new Date(selectedKasbon.request_date).toLocaleDateString("id-ID")}
+                                      {new Date(selectedKasbon.request_date || selectedKasbon.created_at || new Date()).toLocaleDateString("id-ID")}
                                     </p>
                                   </div>
                                   {selectedKasbon.due_date && (
                                     <div className="space-y-1 md:space-y-2">
                                       <Label className="text-xs md:text-sm font-semibold text-gray-700">Jatuh Tempo</Label>
-                                      <p className="text-sm md:text-base">
-                                        {new Date(selectedKasbon.due_date).toLocaleDateString("id-ID")}
+                                      <p className="text-sm md:text-base font-semibold text-red-600">
+                                        {new Date(selectedKasbon.due_date || new Date()).toLocaleDateString("id-ID")}
                                       </p>
                                     </div>
                                   )}
@@ -684,15 +871,12 @@ export function KasbonSystem() {
                 {myKasbonRequests
                   .filter((k) => (k.status === "approved" || k.status === "paid") && k.due_date)
                   .sort((a, b) => {
-                    if (!a.due_date || !b.due_date) return 0;
-                    return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+                    return new Date(a.due_date || new Date()).getTime() - new Date(b.due_date || new Date()).getTime();
                   })
                   .map((request) => {
-                    if (!request.due_date) return null;
-                    
                     const today = new Date();
                     today.setHours(0, 0, 0, 0);
-                    const dueDate = new Date(request.due_date);
+                    const dueDate = new Date(request.due_date || new Date());
                     dueDate.setHours(0, 0, 0, 0);
                     const diffTime = dueDate.getTime() - today.getTime();
                     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -739,8 +923,9 @@ export function KasbonSystem() {
                             <p className="text-xs md:text-sm text-muted-foreground font-medium">
                               Pengaju: {request.user?.name || "-"}
                             </p>
-                            <p className="text-xs md:text-sm text-muted-foreground">
-                              Jatuh Tempo: {new Date(request.due_date).toLocaleDateString("id-ID")}
+                            <p className="text-xs md:text-sm text-muted-foreground font-medium flex items-center mt-1">
+                              <Calendar className="h-3 w-3 mr-1" />
+                              Jatuh Tempo: {new Date(request.due_date || new Date()).toLocaleDateString("id-ID")}
                             </p>
                             <p className="text-xs md:text-sm text-muted-foreground line-clamp-1 mt-1">{request.reason}</p>
                           </div>
@@ -817,8 +1002,8 @@ export function KasbonSystem() {
                           <p className="text-xs md:text-sm text-muted-foreground">
                             Pengaju: {request.user?.name || "-"}
                           </p>
-                          <p className="text-xs md:text-sm text-muted-foreground">
-                            Tanggal: {new Date(request.request_date).toLocaleDateString("id-ID")}
+                          <p className="text-xs md:text-sm text-muted-foreground font-medium">
+                            Tanggal: {new Date(request.request_date || request.created_at || new Date()).toLocaleDateString("id-ID")}
                           </p>
                         </div>
                       </div>

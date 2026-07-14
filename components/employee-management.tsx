@@ -170,10 +170,11 @@ function EmployeeManagement() {
     }
 
     const validatePhone = (value: string) => {
-        if (!value.trim()) return "" // Phone is optional
-        const phoneRegex = /^[0-9+\s-]+$/
-        if (!phoneRegex.test(value)) return "Nomor telepon hanya boleh berisi angka, spasi, + dan -"
-        if (value.replace(/[\s+-]/g, '').length < 10) return "Nomor telepon minimal 10 digit"
+        if (!value) return "Nomor telepon wajib diisi"
+        const rest = value.replace(/^\+62/, '')
+        const phoneRegex = /^[0-9]+$/
+        if (!phoneRegex.test(rest) && rest !== "") return "Nomor telepon hanya boleh berisi angka"
+        if (rest.length < 8) return "Nomor telepon minimal 8 digit setelah +62"
         return ""
     }
 
@@ -199,7 +200,17 @@ function EmployeeManagement() {
         return ""
     }
 
+    const checkHasDummyPassword = (emp: Employee | null) => {
+        if (!emp) return true
+        return !emp.password || emp.password === "$2a$10$dummyHashDummyHashDummyHashDummyHashDummyHashDummyHa"
+    }
+
+    const isBcryptHash = (str: string) => {
+        return str && (str.startsWith('$2a$') || str.startsWith('$2b$'))
+    }
+
     const [editEmployee, setEditEmployee] = useState<Employee | null>(null)
+    const [employeeHasPassword, setEmployeeHasPassword] = useState(false)
 
     const [isEditPayrollOpen, setIsEditPayrollOpen] = useState(false)
     const [editingPayrollEmployee, setEditingPayrollEmployee] = useState<Employee | null>(null)
@@ -553,10 +564,18 @@ function EmployeeManagement() {
     }
 
     const handleEditEmployee = (employee: Employee) => {
-        const hasDummyPassword = !employee.password || employee.password === "$2a$10$dummyHashDummyHashDummyHashDummyHashDummyHashDummyHa"
+        const hasPwd = !checkHasDummyPassword(employee);
+        setEmployeeHasPassword(hasPwd);
+        
+        let initialPassword = "";
+        if (hasPwd && employee.password && !isBcryptHash(employee.password)) {
+            // Password is in plain text, show it!
+            initialPassword = employee.password;
+        }
+
         setEditEmployee({
             ...employee,
-            password: hasDummyPassword ? "" : "••••••"
+            password: initialPassword
         })
         setIsEditDialogOpen(true)
     }
@@ -571,18 +590,18 @@ function EmployeeManagement() {
             return;
         }
 
-        // Password is required for login
-        if (!editEmployee.password || editEmployee.password.trim() === "") {
+        // If they don't have a real password yet, they MUST provide one
+        if (!employeeHasPassword && (!editEmployee.password || editEmployee.password.trim() === "")) {
             toast({
                 title: "Error",
                 description: "Password wajib diisi karena digunakan untuk login!",
                 variant: "destructive",
-            })
-            return
+            });
+            return;
         }
 
         // Validate length if updated
-        if (editEmployee.password !== "••••••" && editEmployee.password.length < 6) {
+        if (editEmployee.password && editEmployee.password.length > 0 && editEmployee.password.length < 6) {
             toast({
                 title: "Error",
                 description: "Password baru harus minimal 6 karakter!",
@@ -796,24 +815,32 @@ function EmployeeManagement() {
                                 )}
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="phone" className="text-sm font-medium">Nomor Telepon</Label>
-                                <Input
-                                    id="phone"
-                                    type="tel"
-                                    value={newEmployee.phone}
-                                    onChange={(e) => {
-                                        const value = e.target.value
-                                        // Only allow numbers, spaces, + and -
-                                        if (value === '' || /^[0-9+\s-]*$/.test(value)) {
-                                            setNewEmployee({ ...newEmployee, phone: value })
-                                            setFormErrors({ ...formErrors, phone: validatePhone(value) })
-                                        }
-                                    }}
-                                    onBlur={(e) => setFormErrors({ ...formErrors, phone: validatePhone(e.target.value) })}
-                                    placeholder="+62 812 xxxx xxxx"
-                                    pattern="[0-9+\s-]*"
-                                    className={`focus-visible:ring-2 ${formErrors.phone ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-                                />
+                                <Label htmlFor="phone" className="text-sm font-medium">
+                                    Nomor Telepon <span className="text-red-500">*</span>
+                                </Label>
+                                <div className="flex">
+                                    <div className="flex items-center justify-center px-3 border border-r-0 border-input rounded-l-md bg-muted text-muted-foreground text-sm font-medium">
+                                        +62
+                                    </div>
+                                    <Input
+                                        id="phone"
+                                        type="tel"
+                                        required
+                                        value={newEmployee.phone.replace(/^\+62/, '')}
+                                        onChange={(e) => {
+                                            let val = e.target.value.replace(/\D/g, '')
+                                            if (val.startsWith('0')) val = val.substring(1)
+                                            if (val.startsWith('62')) val = val.substring(2)
+                                            const fullVal = val ? `+62${val}` : ''
+                                            setNewEmployee({ ...newEmployee, phone: fullVal })
+                                            setFormErrors({ ...formErrors, phone: validatePhone(fullVal) })
+                                        }}
+                                        onBlur={() => setFormErrors({ ...formErrors, phone: validatePhone(newEmployee.phone) })}
+                                        placeholder="812xxxxxxx"
+                                        pattern="[0-9]*"
+                                        className={`rounded-l-none focus-visible:ring-2 ${formErrors.phone ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                                    />
+                                </div>
                                 {formErrors.phone && (
                                     <div className="flex items-center gap-1 text-xs text-red-600 mt-1">
                                         <AlertTriangle className="h-3 w-3" />
@@ -968,7 +995,15 @@ function EmployeeManagement() {
                             <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={operationLoading}>
                                 Batal
                             </Button>
-                            <Button type="button" onClick={handleAddEmployee} disabled={operationLoading}>
+                            <Button 
+                                type="button" 
+                                onClick={handleAddEmployee} 
+                                disabled={
+                                    operationLoading || 
+                                    !!formErrors.name || !!formErrors.email || !!formErrors.phone || !!formErrors.position || !!formErrors.pin || !!formErrors.password || 
+                                    !newEmployee.name || !newEmployee.email || !newEmployee.phone || !newEmployee.position || !newEmployee.pin || !newEmployee.password
+                                }
+                            >
                                 {operationLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Tambah Karyawan"}
                             </Button>
                         </div>
@@ -1506,11 +1541,26 @@ function EmployeeManagement() {
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="edit-phone">Nomor Telepon</Label>
-                                <Input
-                                    id="edit-phone"
-                                    value={editEmployee.phone || ""}
-                                    onChange={(e) => setEditEmployee({ ...editEmployee, phone: e.target.value })}
-                                />
+                                <div className="flex">
+                                    <div className="flex items-center justify-center px-3 border border-r-0 border-input rounded-l-md bg-muted text-muted-foreground text-sm font-medium">
+                                        +62
+                                    </div>
+                                    <Input
+                                        id="edit-phone"
+                                        type="tel"
+                                        value={(editEmployee.phone || "").replace(/^\+62/, '')}
+                                        onChange={(e) => {
+                                            let val = e.target.value.replace(/\D/g, '')
+                                            if (val.startsWith('0')) val = val.substring(1)
+                                            if (val.startsWith('62')) val = val.substring(2)
+                                            const fullVal = val ? `+62${val}` : ''
+                                            setEditEmployee({ ...editEmployee, phone: fullVal })
+                                        }}
+                                        placeholder="812xxxxxxx"
+                                        pattern="[0-9]*"
+                                        className="rounded-l-none"
+                                    />
+                                </div>
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="edit-position">Posisi</Label>
@@ -1529,7 +1579,7 @@ function EmployeeManagement() {
                                         maxLength={6}
                                         value={editEmployee.pin || ""}
                                         onChange={(e) => setEditEmployee({ ...editEmployee, pin: e.target.value })}
-                                        placeholder="••••••"
+                                        placeholder={showEditEmployeePin && !editEmployee.pin ? "Tidak ada pin" : "••••••"}
                                         className="pr-10"
                                         autoComplete="new-password"
                                         data-lpignore="true"
@@ -1560,7 +1610,7 @@ function EmployeeManagement() {
                                         type={showEditEmployeePassword ? "text" : "password"}
                                         value={editEmployee.password || ""}
                                         onChange={(e) => setEditEmployee({ ...editEmployee, password: e.target.value })}
-                                        placeholder={editEmployee.password === "••••••" ? "Password sudah diatur" : "Masukkan password login"}
+                                        placeholder={employeeHasPassword ? "•••••• (Sudah diatur)" : (showEditEmployeePassword && !editEmployee.password ? "Tidak ada password" : "Masukkan password login")}
                                         className="pr-10"
                                         autoComplete="new-password"
                                         data-lpignore="true"
@@ -1576,26 +1626,19 @@ function EmployeeManagement() {
                                         onClick={(e) => {
                                             e.preventDefault();
                                             e.stopPropagation();
-                                            if (editEmployee.password === "••••••") {
-                                                toast({
-                                                    title: "Info Keamanan",
-                                                    description: "Password saat ini terenkripsi demi keamanan dan tidak dapat ditampilkan secara langsung.",
-                                                })
-                                            } else {
-                                                setShowEditEmployeePassword(!showEditEmployeePassword)
-                                            }
+                                            setShowEditEmployeePassword(!showEditEmployeePassword)
                                         }}
                                     >
                                         {showEditEmployeePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                     </Button>
                                 </div>
-                                {(!editEmployee.password || editEmployee.password.trim() === "") ? (
+                                {(!employeeHasPassword && (!editEmployee.password || editEmployee.password.trim() === "")) ? (
                                     <p className="text-xs font-semibold text-red-500 mt-1">
                                         ⚠️ Password wajib diisi karena digunakan untuk login!
                                     </p>
-                                ) : editEmployee.password === "••••••" ? (
+                                ) : (employeeHasPassword && (!editEmployee.password || editEmployee.password.trim() === "")) ? (
                                     <p className="text-xs text-green-600 mt-1">
-                                        ✅ Password aktif sudah diatur. Ketik password baru jika ingin mengubah.
+                                        ✅ Password aktif sudah diatur. Ketik jika ingin mengubah.
                                     </p>
                                 ) : (
                                     <p className="text-xs text-blue-500 mt-1">
