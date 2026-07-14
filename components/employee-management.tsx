@@ -145,6 +145,60 @@ function EmployeeManagement() {
         password: "",
     })
 
+    // Real-time validation errors state
+    const [formErrors, setFormErrors] = useState({
+        name: "",
+        email: "",
+        phone: "",
+        position: "",
+        pin: "",
+        password: "",
+    })
+
+    // Validation functions
+    const validateName = (value: string) => {
+        if (!value.trim()) return "Nama lengkap wajib diisi"
+        if (value.trim().length < 3) return "Nama minimal 3 karakter"
+        return ""
+    }
+
+    const validateEmail = (value: string) => {
+        if (!value.trim()) return "Email wajib diisi"
+        const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+        if (!emailRegex.test(value)) return "Format email tidak valid (contoh: nama@example.com)"
+        return ""
+    }
+
+    const validatePhone = (value: string) => {
+        if (!value.trim()) return "" // Phone is optional
+        const phoneRegex = /^[0-9+\s-]+$/
+        if (!phoneRegex.test(value)) return "Nomor telepon hanya boleh berisi angka, spasi, + dan -"
+        if (value.replace(/[\s+-]/g, '').length < 10) return "Nomor telepon minimal 10 digit"
+        return ""
+    }
+
+    const validatePosition = (value: string) => {
+        if (!value.trim()) return "Posisi wajib diisi"
+        if (value.trim().length < 3) return "Posisi minimal 3 karakter"
+        return ""
+    }
+
+    const validatePin = (value: string) => {
+        if (!value) return "PIN keamanan wajib diisi"
+        if (value.length < 6) return "PIN harus 6 digit angka"
+        if (value.length > 6) return "PIN maksimal 6 digit"
+        const pinRegex = /^[0-9]{6}$/
+        if (!pinRegex.test(value)) return "PIN hanya boleh berisi angka 0-9"
+        return ""
+    }
+
+    const validatePassword = (value: string) => {
+        if (!value) return "Password wajib diisi"
+        if (value.length < 6) return "Password minimal 6 karakter"
+        if (value.length > 50) return "Password maksimal 50 karakter"
+        return ""
+    }
+
     const [editEmployee, setEditEmployee] = useState<Employee | null>(null)
 
     const [isEditPayrollOpen, setIsEditPayrollOpen] = useState(false)
@@ -348,41 +402,87 @@ function EmployeeManagement() {
         console.log("=== handleAddEmployee called ===")
         console.log("newEmployee data:", newEmployee)
         
+        // BUG-002 Fix: Validate required fields with better messages
         if (!newEmployee.name.trim()) {
             console.log("Validation failed: name is empty")
             toast({
-                title: "Error",
-                description: "Nama karyawan harus diisi",
+                title: "Validasi Gagal",
+                description: "Nama lengkap karyawan wajib diisi",
                 variant: "destructive",
             })
             return
         }
         
-        if (!newEmployee.email.trim() || !/\S+@\S+\.\S+/.test(newEmployee.email)) {
-            console.log("Validation failed: email invalid")
+        // BUG-003 Fix: Improved email validation with strict regex
+        const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+        if (!newEmployee.email.trim()) {
+            console.log("Validation failed: email is empty")
             toast({
-                title: "Error",
-                description: "Email harus valid",
+                title: "Validasi Gagal",
+                description: "Email wajib diisi",
                 variant: "destructive",
             })
             return
+        }
+        if (!emailRegex.test(newEmployee.email)) {
+            console.log("Validation failed: email invalid format")
+            toast({
+                title: "Validasi Gagal",
+                description: "Format email tidak valid. Contoh: nama@example.com",
+                variant: "destructive",
+            })
+            return
+        }
+        
+        // BUG-005 Fix: Validate phone number (optional but must be valid if filled)
+        if (newEmployee.phone && newEmployee.phone.trim()) {
+            const phoneRegex = /^[0-9+\s-]+$/
+            if (!phoneRegex.test(newEmployee.phone)) {
+                console.log("Validation failed: phone contains invalid characters")
+                toast({
+                    title: "Validasi Gagal",
+                    description: "Nomor telepon hanya boleh berisi angka, spasi, tanda + dan -",
+                    variant: "destructive",
+                })
+                return
+            }
         }
         
         if (!newEmployee.position.trim()) {
             console.log("Validation failed: position is empty")
             toast({
-                title: "Error",
-                description: "Posisi harus diisi",
+                title: "Validasi Gagal",
+                description: "Posisi karyawan wajib diisi",
                 variant: "destructive",
             })
             return
         }
         
-        if (!newEmployee.pin || newEmployee.pin.length !== 6) {
-            console.log("Validation failed: PIN invalid", { pin: newEmployee.pin, length: newEmployee.pin?.length })
+        // BUG-004 & BUG-006 Fix: Validate PIN is exactly 6 numeric digits
+        if (!newEmployee.pin) {
+            console.log("Validation failed: PIN is empty")
             toast({
-                title: "Error",
-                description: "PIN harus 6 digit",
+                title: "Validasi Gagal",
+                description: "PIN keamanan wajib diisi",
+                variant: "destructive",
+            })
+            return
+        }
+        if (newEmployee.pin.length !== 6) {
+            console.log("Validation failed: PIN length invalid", { pin: newEmployee.pin, length: newEmployee.pin?.length })
+            toast({
+                title: "Validasi Gagal",
+                description: "PIN harus tepat 6 digit angka",
+                variant: "destructive",
+            })
+            return
+        }
+        const pinRegex = /^[0-9]{6}$/
+        if (!pinRegex.test(newEmployee.pin)) {
+            console.log("Validation failed: PIN contains non-numeric characters")
+            toast({
+                title: "Validasi Gagal",
+                description: "PIN hanya boleh berisi angka 0-9 (6 digit)",
                 variant: "destructive",
             })
             return
@@ -391,8 +491,8 @@ function EmployeeManagement() {
         if (!newEmployee.password || newEmployee.password.length < 6) {
             console.log("Validation failed: Password invalid")
             toast({
-                title: "Error",
-                description: "Password login harus diisi minimal 6 karakter",
+                title: "Validasi Gagal",
+                description: "Password login wajib diisi minimal 6 karakter",
                 variant: "destructive",
             })
             return
@@ -646,53 +746,130 @@ function EmployeeManagement() {
                         </DialogHeader>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
                             <div className="space-y-2">
-                                <Label htmlFor="name">Nama Lengkap *</Label>
+                                <Label htmlFor="name" className="text-sm font-medium">
+                                    Nama Lengkap <span className="text-red-500">*</span>
+                                </Label>
                                 <Input
                                     id="name"
                                     value={newEmployee.name}
-                                    onChange={(e) => setNewEmployee({ ...newEmployee, name: e.target.value })}
+                                    onChange={(e) => {
+                                        const value = e.target.value.trimStart()
+                                        setNewEmployee({ ...newEmployee, name: value })
+                                        setFormErrors({ ...formErrors, name: validateName(value) })
+                                    }}
+                                    onBlur={(e) => setFormErrors({ ...formErrors, name: validateName(e.target.value) })}
                                     placeholder="Nama lengkap karyawan"
+                                    required
+                                    className={`focus-visible:ring-2 ${formErrors.name ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                                 />
+                                {formErrors.name && (
+                                    <div className="flex items-center gap-1 text-xs text-red-600 mt-1">
+                                        <AlertTriangle className="h-3 w-3" />
+                                        <span>{formErrors.name}</span>
+                                    </div>
+                                )}
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="email">Email *</Label>
+                                <Label htmlFor="email" className="text-sm font-medium">
+                                    Email <span className="text-red-500">*</span>
+                                </Label>
                                 <Input
                                     id="email"
                                     type="email"
                                     value={newEmployee.email}
-                                    onChange={(e) => setNewEmployee({ ...newEmployee, email: e.target.value })}
+                                    onChange={(e) => {
+                                        const value = e.target.value.trim().toLowerCase()
+                                        setNewEmployee({ ...newEmployee, email: value })
+                                        setFormErrors({ ...formErrors, email: validateEmail(value) })
+                                    }}
+                                    onBlur={(e) => setFormErrors({ ...formErrors, email: validateEmail(e.target.value) })}
                                     placeholder="email@example.com"
+                                    required
+                                    pattern="[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+                                    className={`focus-visible:ring-2 ${formErrors.email ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                                 />
+                                {formErrors.email && (
+                                    <div className="flex items-center gap-1 text-xs text-red-600 mt-1">
+                                        <AlertTriangle className="h-3 w-3" />
+                                        <span>{formErrors.email}</span>
+                                    </div>
+                                )}
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="phone">Nomor Telepon</Label>
+                                <Label htmlFor="phone" className="text-sm font-medium">Nomor Telepon</Label>
                                 <Input
                                     id="phone"
+                                    type="tel"
                                     value={newEmployee.phone}
-                                    onChange={(e) => setNewEmployee({ ...newEmployee, phone: e.target.value })}
+                                    onChange={(e) => {
+                                        const value = e.target.value
+                                        // Only allow numbers, spaces, + and -
+                                        if (value === '' || /^[0-9+\s-]*$/.test(value)) {
+                                            setNewEmployee({ ...newEmployee, phone: value })
+                                            setFormErrors({ ...formErrors, phone: validatePhone(value) })
+                                        }
+                                    }}
+                                    onBlur={(e) => setFormErrors({ ...formErrors, phone: validatePhone(e.target.value) })}
                                     placeholder="+62 812 xxxx xxxx"
+                                    pattern="[0-9+\s-]*"
+                                    className={`focus-visible:ring-2 ${formErrors.phone ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                                 />
+                                {formErrors.phone && (
+                                    <div className="flex items-center gap-1 text-xs text-red-600 mt-1">
+                                        <AlertTriangle className="h-3 w-3" />
+                                        <span>{formErrors.phone}</span>
+                                    </div>
+                                )}
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="position">Posisi *</Label>
+                                <Label htmlFor="position" className="text-sm font-medium">
+                                    Posisi <span className="text-red-500">*</span>
+                                </Label>
                                 <Input
                                     id="position"
                                     value={newEmployee.position}
-                                    onChange={(e) => setNewEmployee({ ...newEmployee, position: e.target.value })}
+                                    onChange={(e) => {
+                                        const value = e.target.value.trimStart()
+                                        setNewEmployee({ ...newEmployee, position: value })
+                                        setFormErrors({ ...formErrors, position: validatePosition(value) })
+                                    }}
+                                    onBlur={(e) => setFormErrors({ ...formErrors, position: validatePosition(e.target.value) })}
                                     placeholder="Masukkan posisi"
+                                    required
+                                    className={`focus-visible:ring-2 ${formErrors.position ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                                 />
+                                {formErrors.position && (
+                                    <div className="flex items-center gap-1 text-xs text-red-600 mt-1">
+                                        <AlertTriangle className="h-3 w-3" />
+                                        <span>{formErrors.position}</span>
+                                    </div>
+                                )}
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="pin">PIN Keamanan (6 digit) *</Label>
+                                <Label htmlFor="pin" className="text-sm font-medium">
+                                    PIN Keamanan (6 digit) <span className="text-red-500">*</span>
+                                </Label>
                                 <div className="relative">
                                     <Input
                                         id="pin"
                                         type={showNewEmployeePin ? "text" : "password"}
+                                        inputMode="numeric"
                                         maxLength={6}
                                         value={newEmployee.pin || ""}
-                                        onChange={(e) => setNewEmployee({ ...newEmployee, pin: e.target.value })}
+                                        onChange={(e) => {
+                                            const value = e.target.value
+                                            // Only allow exactly 6 numeric digits
+                                            if (value === '' || /^[0-9]{0,6}$/.test(value)) {
+                                                setNewEmployee({ ...newEmployee, pin: value })
+                                                setFormErrors({ ...formErrors, pin: validatePin(value) })
+                                            }
+                                        }}
+                                        onBlur={(e) => setFormErrors({ ...formErrors, pin: validatePin(e.target.value) })}
                                         placeholder="••••••"
-                                        className="pr-10"
+                                        className={`pr-10 focus-visible:ring-2 ${formErrors.pin ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                                        required
+                                        pattern="[0-9]{6}"
+                                        title="PIN harus 6 digit angka"
                                         autoComplete="new-password"
                                         data-lpignore="true"
                                         data-1password-ignore="true"
@@ -713,17 +890,34 @@ function EmployeeManagement() {
                                         {showNewEmployeePin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                     </Button>
                                 </div>
+                                {formErrors.pin ? (
+                                    <div className="flex items-center gap-1 text-xs text-red-600 mt-1">
+                                        <AlertTriangle className="h-3 w-3" />
+                                        <span>{formErrors.pin}</span>
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-muted-foreground">Masukkan 6 digit angka (0-9)</p>
+                                )}
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="password">Password Login *</Label>
+                                <Label htmlFor="password" className="text-sm font-medium">
+                                    Password Login <span className="text-red-500">*</span>
+                                </Label>
                                 <div className="relative">
                                     <Input
                                         id="password"
                                         type={showNewEmployeePassword ? "text" : "password"}
                                         value={newEmployee.password}
-                                        onChange={(e) => setNewEmployee({ ...newEmployee, password: e.target.value })}
+                                        onChange={(e) => {
+                                            const value = e.target.value
+                                            setNewEmployee({ ...newEmployee, password: value })
+                                            setFormErrors({ ...formErrors, password: validatePassword(value) })
+                                        }}
+                                        onBlur={(e) => setFormErrors({ ...formErrors, password: validatePassword(e.target.value) })}
                                         placeholder="Password untuk login email"
-                                        className="pr-10"
+                                        className={`pr-10 focus-visible:ring-2 ${formErrors.password ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                                        required
+                                        minLength={6}
                                         autoComplete="new-password"
                                         data-lpignore="true"
                                         data-1password-ignore="true"
@@ -744,6 +938,14 @@ function EmployeeManagement() {
                                         {showNewEmployeePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                     </Button>
                                 </div>
+                                {formErrors.password ? (
+                                    <div className="flex items-center gap-1 text-xs text-red-600 mt-1">
+                                        <AlertTriangle className="h-3 w-3" />
+                                        <span>{formErrors.password}</span>
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-muted-foreground">Minimal 6 karakter</p>
+                                )}
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="status">Status</Label>

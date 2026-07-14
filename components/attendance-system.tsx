@@ -192,6 +192,14 @@ export function AttendanceSystem() {
   const [cameraPermission, setCameraPermission] = useState<"granted" | "denied" | "prompt" | "checking">("checking")
   const [showCameraPermissionDialog, setShowCameraPermissionDialog] = useState(false)
   const [activeTab, setActiveTab] = useState("quick-action")
+  const [timeTrigger, setTimeTrigger] = useState(new Date())
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTimeTrigger(new Date())
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [])
 
   const loadEmployeesAndBranches = useCallback(async () => {
     try {
@@ -1107,6 +1115,55 @@ export function AttendanceSystem() {
     }
   }
 
+  const getLiveShiftTimes = (shift: any, dateStr: string) => {
+    let totalWorkingHours = shift.totalWorkingHours;
+    let totalBreakTime = shift.totalBreakTime; // in minutes
+
+    if (shift.status === "present" && shift.checkIn) {
+      const checkIn = new Date(`${dateStr}T${shift.checkIn}`)
+      const now = new Date()
+      const workMinutes = (now.getTime() - checkIn.getTime()) / (1000 * 60)
+      const breakMinutes = shift.totalBreakTime || 0
+      totalWorkingHours = Math.max(0, (workMinutes - breakMinutes) / 60)
+    } else if (shift.status === "on-break" && shift.checkIn) {
+      const checkIn = new Date(`${dateStr}T${shift.checkIn}`)
+      let breakMinutes = shift.totalBreakTime || 0;
+      if (shift.breakStart) {
+        const breakStart = new Date(`${dateStr}T${shift.breakStart}`)
+        const now = new Date()
+        breakMinutes = (now.getTime() - breakStart.getTime()) / (1000 * 60)
+      }
+      totalBreakTime = breakMinutes;
+      
+      if (shift.breakStart) {
+        const breakStart = new Date(`${dateStr}T${shift.breakStart}`)
+        const workMinutesBeforeBreak = (breakStart.getTime() - checkIn.getTime()) / (1000 * 60)
+        totalWorkingHours = Math.max(0, workMinutesBeforeBreak / 60)
+      }
+    }
+
+    return {
+      workingHours: totalWorkingHours,
+      breakTime: totalBreakTime
+    }
+  }
+
+  const getLiveSummaryTimes = (summary: DailyAttendanceSummary) => {
+    let totalDailyHours = 0;
+    let totalDailyBreaks = 0;
+
+    summary.shifts.forEach((shift) => {
+      const { workingHours, breakTime } = getLiveShiftTimes(shift, summary.date);
+      totalDailyHours += workingHours;
+      totalDailyBreaks += breakTime;
+    });
+
+    return {
+      totalDailyHours,
+      totalDailyBreaks
+    };
+  }
+
   const formatDetailedTime = (hours: number): string => {
     if (hours <= 0) return "00:00:00"
 
@@ -1253,6 +1310,7 @@ export function AttendanceSystem() {
               filteredSummaries.map((summary) => {
                 const employee = employees.find((e) => e.id === summary.employeeId)
                 if (!employee) return null
+                const liveTimes = getLiveSummaryTimes(summary)
 
                 return (
                   <Card key={summary.employeeId} className="overflow-hidden hover:shadow-lg transition-shadow">
@@ -1272,12 +1330,12 @@ export function AttendanceSystem() {
                         <div className="text-right">
                           <div className="text-xs sm:text-sm text-gray-600">Total Hari Ini</div>
                           <div className="font-semibold text-base sm:text-lg text-blue-600">
-                            {formatDetailedTime(summary.totalDailyHours)}
+                            {formatDetailedTime(liveTimes.totalDailyHours)}
                           </div>
                           <div className="text-xs text-gray-500">
                             {summary.shifts.length} shift
-                            {summary.totalDailyBreaks > 0 && (
-                              <span> • {formatBreakTime(summary.totalDailyBreaks)} total istirahat</span>
+                            {liveTimes.totalDailyBreaks > 0 && (
+                              <span> • {formatBreakTime(liveTimes.totalDailyBreaks)} total istirahat</span>
                             )}
                           </div>
                           {summary.currentStatus === "on-break" && (
@@ -1293,32 +1351,35 @@ export function AttendanceSystem() {
                           <h4 className="text-xs sm:text-sm font-medium text-gray-700">Shift Hari Ini:</h4>
                           {summary.shifts
                             .sort((a, b) => new Date(a.checkIn || "").getTime() - new Date(b.checkIn || "").getTime())
-                            .map((shift, index) => (
-                              <div key={shift.id} className="bg-gray-50 rounded-lg p-3 text-xs sm:text-sm">
-                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                                  <div className="flex-1">
-                                    <span className="font-medium">
-                                      Shift {index + 1} - {shift.branch}
-                                    </span>
-                                    <div className="text-gray-600 mt-1">
-                                      {shift.checkIn && `Masuk: ${shift.checkIn}`}
-                                      {shift.checkOut && ` • Pulang: ${shift.checkOut}`}
+                            .map((shift, index) => {
+                              const liveShift = getLiveShiftTimes(shift, summary.date)
+                              return (
+                                <div key={shift.id} className="bg-gray-50 rounded-lg p-3 text-xs sm:text-sm">
+                                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                                    <div className="flex-1">
+                                      <span className="font-medium">
+                                        Shift {index + 1} - {shift.branch}
+                                      </span>
+                                      <div className="text-gray-600 mt-1">
+                                        {shift.checkIn && `Masuk: ${shift.checkIn}`}
+                                        {shift.checkOut && ` • Pulang: ${shift.checkOut}`}
+                                      </div>
                                     </div>
-                                  </div>
-                                  <div className="text-right">
-                                    <div className="font-medium text-blue-600 text-sm sm:text-base">
-                                      {formatDetailedTime(shift.totalWorkingHours)}
+                                    <div className="text-right">
+                                      <div className="font-medium text-blue-600 text-sm sm:text-base">
+                                        {formatDetailedTime(liveShift.workingHours)}
+                                      </div>
+                                      <Badge className={`text-xs ${getStatusColor(shift.status)}`}>
+                                        {shift.status === "present" && "Sedang Bekerja"}
+                                        {shift.status === "on-break" && "Istirahat"}
+                                        {shift.status === "checked-out" && "Sudah Pulang"}
+                                        {shift.status === "absent" && "Belum Masuk"}
+                                      </Badge>
                                     </div>
-                                    <Badge className={`text-xs ${getStatusColor(shift.status)}`}>
-                                      {shift.status === "present" && "Sedang Bekerja"}
-                                      {shift.status === "on-break" && "Istirahat"}
-                                      {shift.status === "checked-out" && "Sudah Pulang"}
-                                      {shift.status === "absent" && "Belum Masuk"}
-                                    </Badge>
                                   </div>
                                 </div>
-                              </div>
-                            ))}
+                              )
+                            })}
                         </div>
                       )}
 
@@ -1392,90 +1453,93 @@ export function AttendanceSystem() {
             </CardHeader>
             <CardContent className="p-4 sm:p-6">
               <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                {dailySummaries.map((summary) => (
-                  <Card key={`${summary.employeeId}-${summary.date}`} className="hover:shadow-lg transition-shadow">
-                    <CardHeader className="p-3 sm:p-4 pb-2 sm:pb-3">
-                      <div className="flex items-center gap-2 sm:gap-3">
-                        <Avatar className="h-8 w-8 sm:h-10 sm:w-10">
-                          <AvatarFallback className="bg-primary/10 text-primary text-xs sm:text-sm">
-                            {summary.employeeName
-                              ? summary.employeeName
-                                  .split(" ")
-                                  .map((n) => n[0])
-                                  .join("")
-                              : "?"}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-sm sm:text-base">{summary.employeeName}</h3>
-                        </div>
-                        <span
-                          className={`text-xs px-2 py-1 rounded-full font-medium ${
-                            summary.currentStatus === "present"
-                              ? "bg-green-100 text-green-800"
+                {dailySummaries.map((summary) => {
+                  const liveTimes = getLiveSummaryTimes(summary)
+                  return (
+                    <Card key={`${summary.employeeId}-${summary.date}`} className="hover:shadow-lg transition-shadow">
+                      <CardHeader className="p-3 sm:p-4 pb-2 sm:pb-3">
+                        <div className="flex items-center gap-2 sm:gap-3">
+                          <Avatar className="h-8 w-8 sm:h-10 sm:w-10">
+                            <AvatarFallback className="bg-primary/10 text-primary text-xs sm:text-sm">
+                              {summary.employeeName
+                                ? summary.employeeName
+                                    .split(" ")
+                                    .map((n) => n[0])
+                                    .join("")
+                                : "?"}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1">
+                            <h3 className="font-semibold text-sm sm:text-base">{summary.employeeName}</h3>
+                          </div>
+                          <span
+                            className={`text-xs px-2 py-1 rounded-full font-medium ${
+                              summary.currentStatus === "present"
+                                ? "bg-green-100 text-green-800"
+                                : summary.currentStatus === "on-break"
+                                  ? "bg-yellow-100 text-yellow-800"
+                                  : summary.currentStatus === "checked-out"
+                                    ? "bg-blue-100 text-blue-800"
+                                    : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {summary.currentStatus === "present"
+                              ? "Hadir"
                               : summary.currentStatus === "on-break"
-                                ? "bg-yellow-100 text-yellow-800"
+                                ? "Istirahat"
                                 : summary.currentStatus === "checked-out"
-                                  ? "bg-blue-100 text-blue-800"
-                                  : "bg-red-100 text-red-800"
-                          }`}
-                        >
-                          {summary.currentStatus === "present"
-                            ? "Hadir"
-                            : summary.currentStatus === "on-break"
-                              ? "Istirahat"
-                              : summary.currentStatus === "checked-out"
-                                ? "Pulang"
-                                : "Tidak Hadir"}
-                        </span>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="p-3 sm:p-4 space-y-3 sm:space-y-4">
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs sm:text-sm font-medium text-muted-foreground">Tanggal:</span>
-                          <span className="text-xs sm:text-sm font-semibold">{summary.date}</span>
+                                  ? "Pulang"
+                                  : "Tidak Hadir"}
+                          </span>
                         </div>
-                      </div>
-
-                      <div className="space-y-2 sm:space-y-3 pt-2 sm:pt-3 border-t">
-                        <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                          <div className="text-center p-2 sm:p-3 bg-green-50 rounded-lg">
-                            <p className="text-xs text-green-600 font-medium mb-1">Check In</p>
-                            <p className="text-xs sm:text-sm font-bold text-green-800">
-                              {summary.shifts.length > 0 && summary.shifts[0].checkIn
-                                ? summary.shifts[0].checkIn
-                                : "--:--"}
-                            </p>
-                          </div>
-                          <div className="text-center p-2 sm:p-3 bg-red-50 rounded-lg">
-                            <p className="text-xs text-red-600 font-medium mb-1">Check Out</p>
-                            <p className="text-xs sm:text-sm font-bold text-red-800">
-                              {summary.shifts.length > 0 && summary.shifts[summary.shifts.length - 1].checkOut
-                                ? summary.shifts[summary.shifts.length - 1].checkOut
-                                : "--:--"}
-                            </p>
+                      </CardHeader>
+                      <CardContent className="p-3 sm:p-4 space-y-3 sm:space-y-4">
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs sm:text-sm font-medium text-muted-foreground">Tanggal:</span>
+                            <span className="text-xs sm:text-sm font-semibold">{summary.date}</span>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                          <div className="text-center p-2 sm:p-3 bg-blue-50 rounded-lg">
-                            <p className="text-xs text-blue-600 font-medium mb-1">Total Kerja</p>
-                            <p className="text-xs sm:text-sm font-bold text-blue-800">
-                              {summary.totalDailyHours > 0 ? formatDetailedTime(summary.totalDailyHours) : "00:00:00"}
-                            </p>
+                        <div className="space-y-2 sm:space-y-3 pt-2 sm:pt-3 border-t">
+                          <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                            <div className="text-center p-2 sm:p-3 bg-green-50 rounded-lg">
+                              <p className="text-xs text-green-600 font-medium mb-1">Check In</p>
+                              <p className="text-xs sm:text-sm font-bold text-green-800">
+                                {summary.shifts.length > 0 && summary.shifts[0].checkIn
+                                  ? summary.shifts[0].checkIn
+                                  : "--:--"}
+                              </p>
+                            </div>
+                            <div className="text-center p-2 sm:p-3 bg-red-50 rounded-lg">
+                              <p className="text-xs text-red-600 font-medium mb-1">Check Out</p>
+                              <p className="text-xs sm:text-sm font-bold text-red-800">
+                                {summary.shifts.length > 0 && summary.shifts[summary.shifts.length - 1].checkOut
+                                  ? summary.shifts[summary.shifts.length - 1].checkOut
+                                  : "--:--"}
+                              </p>
+                            </div>
                           </div>
-                          <div className="text-center p-2 sm:p-3 bg-yellow-50 rounded-lg">
-                            <p className="text-xs text-yellow-600 font-medium mb-1">Total Istirahat</p>
-                            <p className="text-xs sm:text-sm font-bold text-yellow-800">
-                              {formatBreakTime(summary.totalDailyBreaks)}
-                            </p>
+
+                          <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                            <div className="text-center p-2 sm:p-3 bg-blue-50 rounded-lg">
+                              <p className="text-xs text-blue-600 font-medium mb-1">Total Kerja</p>
+                              <p className="text-xs sm:text-sm font-bold text-blue-800">
+                                {liveTimes.totalDailyHours > 0 ? formatDetailedTime(liveTimes.totalDailyHours) : "00:00:00"}
+                              </p>
+                            </div>
+                            <div className="text-center p-2 sm:p-3 bg-yellow-50 rounded-lg">
+                              <p className="text-xs text-yellow-600 font-medium mb-1">Total Istirahat</p>
+                              <p className="text-xs sm:text-sm font-bold text-yellow-800">
+                                {formatBreakTime(liveTimes.totalDailyBreaks)}
+                              </p>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      </CardContent>
+                    </Card>
+                  )
+                })}
               </div>
 
               {dailySummaries.length === 0 && (

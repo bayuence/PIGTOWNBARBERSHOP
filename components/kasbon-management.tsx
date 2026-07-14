@@ -496,7 +496,7 @@ export default function KasbonManagement() {
     }).format(amount)
   }
 
-  const getDueDateStatus = (dueDate: string | null, status: string) => {
+  const getDueDateStatus = (dueDate: string | null | undefined, status: string) => {
     if (!dueDate || status === "paid") return null;
     
     const today = new Date();
