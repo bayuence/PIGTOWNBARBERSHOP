@@ -52,6 +52,11 @@ interface AttendanceRecord {
   location: string
   shiftDisplayName?: string
   manualBreakDuration?: number
+  // Keterlambatan
+  lateSeconds: number        // jumlah detik keterlambatan (0 = on-time)
+  isLate: boolean            // apakah terlambat
+  shiftStartTime?: string    // jam mulai shift seharusnya (HH:mm:ss)
+  shiftEndTime?: string      // jam akhir shift
 }
 
 interface DailyAttendanceSummary {
@@ -168,6 +173,26 @@ async function getBranchShifts(branchId?: string): Promise<{ data: BranchShift[]
   }
 }
 
+// Hitung keterlambatan dalam detik (0 = on-time)
+const calculateLateSeconds = (checkInTime: string | null, shiftStartTime: string | undefined): number => {
+  if (!checkInTime || !shiftStartTime) return 0;
+  // Normalkan ke HH:mm:ss
+  const ciParts = checkInTime.split(":").map(Number);
+  const ssParts = shiftStartTime.split(":").map(Number);
+  const ciSec = (ciParts[0] || 0) * 3600 + (ciParts[1] || 0) * 60 + (ciParts[2] || 0);
+  const ssSec = (ssParts[0] || 0) * 3600 + (ssParts[1] || 0) * 60 + (ssParts[2] || 0);
+  return Math.max(0, ciSec - ssSec);
+};
+
+// Format detik menjadi HH:MM:SS
+const formatLateDuration = (totalSeconds: number): string => {
+  if (totalSeconds <= 0) return "00:00:00";
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+};
+
 const calculateShiftTimes = (shiftData: BranchShift | undefined, checkInTime: string | null, checkOutTime: string | null, breakStart: string | null, manualBreakDuration: number, dateStr: string, activeBreakStart: string | null) => {
   if (!checkInTime) return { workingHours: 0, breakTime: 0, isAutoBreak: false };
 
@@ -194,9 +219,10 @@ const calculateShiftTimes = (shiftData: BranchShift | undefined, checkInTime: st
   let workMinutes = (effectiveEnd.getTime() - checkIn.getTime()) / (1000 * 60);
   if (workMinutes < 0) workMinutes = 0;
 
+  // Break hanya dari manual break (break_duration yang sudah selesai)
   let totalBreakMinutes = manualBreakDuration || 0;
   
-  // Calculate ongoing manual break
+  // Hitung ongoing manual break (jika sedang istirahat manual sekarang)
   if (activeBreakStart && !checkOutTime) {
       const bStart = new Date(`${dateStr}T${activeBreakStart}`);
       let bEnd = new Date();
@@ -206,10 +232,11 @@ const calculateShiftTimes = (shiftData: BranchShift | undefined, checkInTime: st
       }
   }
 
+  // CATATAN: break_times dari shift TIDAK otomatis dikurangi dari jam kerja.
+  // break_times hanya digunakan untuk deteksi isAutoBreak (tampil info "Waktunya Istirahat").
   let isAutoBreak = false;
-
-  // Subtract auto breaks that fall between checkIn and effectiveEnd
   if (shiftData?.break_times && shiftData.break_times.length > 0) {
+      const now = new Date();
       shiftData.break_times.forEach(bt => {
           if (!bt.start || !bt.end) return;
           const s = bt.start.split(":");
@@ -218,20 +245,8 @@ const calculateShiftTimes = (shiftData: BranchShift | undefined, checkInTime: st
           bStart.setHours(parseInt(s[0]), parseInt(s[1]), 0, 0);
           const bEnd = new Date(checkIn);
           bEnd.setHours(parseInt(e[0]), parseInt(e[1]), 0, 0);
-          
           if (bEnd < bStart) bEnd.setDate(bEnd.getDate() + 1);
-
-          // Find intersection of [checkIn, effectiveEnd] and [bStart, bEnd]
-          const overlapStart = new Date(Math.max(checkIn.getTime(), bStart.getTime()));
-          const overlapEnd = new Date(Math.min(effectiveEnd.getTime(), bEnd.getTime()));
-
-          if (overlapStart < overlapEnd) {
-              const overlapMinutes = (overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60);
-              totalBreakMinutes += overlapMinutes; 
-          }
-
-          // check if we are currently in an auto break
-          const now = new Date();
+          // Hanya deteksi apakah sekarang waktunya break terjadwal
           if (!checkOutTime && now >= bStart && now <= bEnd) {
               isAutoBreak = true;
           }
@@ -486,6 +501,10 @@ export function AttendanceSystem() {
           let shiftName = attendanceData.shift_type || "Unknown"
           const shiftData = allBranchShifts.find(s => String(s.branch_id) === String(attendanceData.branch_id) && (s.type === shiftName || s.id === shiftName));
           
+          // Hitung keterlambatan berdasarkan check_in_time vs shift start_time
+          const lateSeconds = calculateLateSeconds(attendanceData.check_in_time, shiftData?.start_time);
+          const isLate = lateSeconds > 0;
+
           const calc = calculateShiftTimes(
               shiftData,
               attendanceData.check_in_time,
@@ -507,7 +526,7 @@ export function AttendanceSystem() {
             id: attendanceData.id,
             employeeId: emp.id,
             employeeName: emp.name,
-            branch: branchName, // Use resolved branch name
+            branch: branchName,
             branchId: attendanceData.branch_id,
             date: selectedDate,
             shift: shiftName,
@@ -521,7 +540,12 @@ export function AttendanceSystem() {
             totalWorkingHours: totalWorkingHours,
             status,
             photo: attendanceData.check_in_photo || attendanceData.check_out_photo,
-            location: branchName, // Use resolved branch name
+            location: branchName,
+            // Keterlambatan
+            lateSeconds,
+            isLate,
+            shiftStartTime: shiftData?.start_time,
+            shiftEndTime: shiftData?.end_time,
           }
         })
 
@@ -867,6 +891,12 @@ export function AttendanceSystem() {
 
           if (dbRecords && dbRecords.length > 0) {
             const r = dbRecords[0] as any
+            // Cari shift data untuk hitung keterlambatan
+            const shiftNameForLate = r.shift_type || ""
+            const shiftDataForLate = allBranchShifts.find(
+              s => String(s.branch_id) === String(r.branch_id) && (s.type === shiftNameForLate || s.id === shiftNameForLate)
+            )
+            const lateSecondsForRecord = calculateLateSeconds(r.check_in_time, shiftDataForLate?.start_time)
             existingRecord = {
               id: r.id,
               employeeId: selectedEmployee.id,
@@ -884,6 +914,10 @@ export function AttendanceSystem() {
               status: r.status === "on_break" ? "on-break" : "present",
               photo: r.check_in_photo,
               location: "",
+              lateSeconds: lateSecondsForRecord,
+              isLate: lateSecondsForRecord > 0,
+              shiftStartTime: shiftDataForLate?.start_time,
+              shiftEndTime: shiftDataForLate?.end_time,
             }
           }
         }
@@ -1439,8 +1473,19 @@ export function AttendanceSystem() {
                                       </span>
                                       <div className="text-gray-600 mt-1">
                                         {shift.checkIn && `Masuk: ${shift.checkIn}`}
+                                        {shift.shiftStartTime && ` (Jadwal: ${shift.shiftStartTime})`}
                                         {shift.checkOut && ` • Pulang: ${shift.checkOut}`}
                                       </div>
+                                      {/* Badge keterlambatan */}
+                                      {shift.isLate && shift.lateSeconds > 0 && (
+                                        <div className="mt-1.5 inline-flex items-center gap-1 bg-red-100 text-red-700 border border-red-200 rounded-md px-2 py-1">
+                                          <span className="text-xs">⏰</span>
+                                          <span className="text-xs font-semibold">
+                                            Telat {formatLateDuration(shift.lateSeconds)}
+                                            {shift.shiftStartTime && ` dari jam ${shift.shiftStartTime}`}
+                                          </span>
+                                        </div>
+                                      )}
                                     </div>
                                     <div className="text-right">
                                       <div className="font-medium text-blue-600 text-sm sm:text-base">
@@ -1473,47 +1518,78 @@ export function AttendanceSystem() {
                           </Button>
                         )}
 
-                        {summary.currentStatus === "present" && !liveTimes.isAutoBreak && (
-                          <>
-                            <Button
-                              onClick={() => handleBreakStart(employee)}
-                              disabled={isProcessing || dailySummaries.filter(s => s.employeeId !== employee.id && s.currentStatus === 'present' && s.shifts[s.shifts.length-1]?.branchId === summary.shifts[summary.shifts.length-1]?.branchId).length === 0}
-                              variant="outline"
-                              className="border-orange-300 text-orange-700 hover:bg-orange-50 font-medium px-3 py-2 text-xs sm:text-sm rounded-lg"
-                              size="sm"
-                            >
-                              <Coffee className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                              Istirahat
-                            </Button>
-                            <Button
-                              onClick={() => openCheckOutCamera(employee)}
-                              disabled={isProcessing}
-                              className="bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-medium px-3 py-2 text-xs sm:text-sm rounded-lg"
-                              size="sm"
-                            >
-                              <LogOut className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                              Check Out
-                            </Button>
-                          </>
-                        )}
+                        {summary.currentStatus === "present" && !liveTimes.isAutoBreak && (() => {
+                          // Cek cover: ada karyawan lain present di cabang yang sama
+                          const myBranchId = summary.shifts[summary.shifts.length - 1]?.branchId
+                          const hasCover = dailySummaries.some(
+                            s => s.employeeId !== summary.employeeId &&
+                              (s.currentStatus === 'present') &&
+                              s.shifts.some(sh => sh.branchId === myBranchId)
+                          )
+                          return (
+                            <>
+                              <Button
+                                onClick={() => handleBreakStart(employee)}
+                                disabled={isProcessing || !hasCover}
+                                title={!hasCover ? "Tidak ada teman yang standby di cabang ini" : ""}
+                                variant="outline"
+                                className="border-orange-300 text-orange-700 hover:bg-orange-50 font-medium px-3 py-2 text-xs sm:text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                size="sm"
+                              >
+                                <Coffee className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                                Istirahat
+                              </Button>
+                              {!hasCover && (
+                                <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
+                                  ⚠️ Belum ada yang standby
+                                </span>
+                              )}
+                              <Button
+                                onClick={() => openCheckOutCamera(employee)}
+                                disabled={isProcessing}
+                                className="bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-medium px-3 py-2 text-xs sm:text-sm rounded-lg"
+                                size="sm"
+                              >
+                                <LogOut className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                                Check Out
+                              </Button>
+                            </>
+                          )
+                        })()}
 
-                        {summary.currentStatus === "present" && liveTimes.isAutoBreak && (
-                          <>
-                            <div className="bg-orange-50 text-orange-600 font-medium px-3 py-2 text-xs sm:text-sm rounded-lg flex items-center border border-orange-200">
-                               <Coffee className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                               Waktunya Istirahat
-                            </div>
-                            <Button
-                              onClick={() => openCheckOutCamera(employee)}
-                              disabled={isProcessing}
-                              className="bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-medium px-3 py-2 text-xs sm:text-sm rounded-lg"
-                              size="sm"
-                            >
-                              <LogOut className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                              Check Out
-                            </Button>
-                          </>
-                        )}
+                        {summary.currentStatus === "present" && liveTimes.isAutoBreak && (() => {
+                          // Dalam window break terjadwal — cek apakah ada cover
+                          const myBranchId = summary.shifts[summary.shifts.length - 1]?.branchId
+                          const hasCover = dailySummaries.some(
+                            s => s.employeeId !== summary.employeeId &&
+                              (s.currentStatus === 'present') &&
+                              s.shifts.some(sh => sh.branchId === myBranchId)
+                          )
+                          return (
+                            <>
+                              {hasCover ? (
+                                <div className="bg-orange-50 text-orange-600 font-medium px-3 py-2 text-xs sm:text-sm rounded-lg flex items-center border border-orange-200">
+                                  <Coffee className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                                  Waktunya Istirahat ✅
+                                </div>
+                              ) : (
+                                <div className="bg-yellow-50 text-yellow-700 font-medium px-3 py-2 text-xs sm:text-sm rounded-lg flex items-center border border-yellow-200">
+                                  <Coffee className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                                  ⚠️ Waktunya Istirahat — Belum ada yang standby
+                                </div>
+                              )}
+                              <Button
+                                onClick={() => openCheckOutCamera(employee)}
+                                disabled={isProcessing}
+                                className="bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-medium px-3 py-2 text-xs sm:text-sm rounded-lg"
+                                size="sm"
+                              >
+                                <LogOut className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                                Check Out
+                              </Button>
+                            </>
+                          )
+                        })()}
 
                         {summary.currentStatus === "on-break" && (
                           <Button
