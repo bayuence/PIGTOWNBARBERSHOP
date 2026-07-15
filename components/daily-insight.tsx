@@ -27,7 +27,11 @@ import {
   ShoppingBag,
   Award,
   Wallet,
-  X
+  X,
+  Banknote,
+  Send,
+  ImageIcon,
+  CheckCircle2
 } from "lucide-react"
 import { supabase, getBranches } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
@@ -126,6 +130,15 @@ export function DailyInsight() {
   const [sortField, setSortField] = useState("created_at")
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
 
+  // Setor Kas states
+  const [isSetorModalOpen, setIsSetorModalOpen] = useState(false)
+  const [setorAmount, setSetorAmount] = useState("")
+  const [setorNote, setSetorNote] = useState("")
+  const [setorProofFile, setSetorProofFile] = useState<File | null>(null)
+  const [setorProofPreview, setSetorProofPreview] = useState<string | null>(null)
+  const [isSubmittingSetor, setIsSubmittingSetor] = useState(false)
+  const [depositList, setDepositList] = useState<any[]>([])
+
   // Load user data & branches
   useEffect(() => {
     const initData = async () => {
@@ -171,6 +184,23 @@ export function DailyInsight() {
   }, [router])
 
   // Fetch report data
+  const fetchDeposits = async (branchId: string) => {
+    try {
+      const todayStart = new Date()
+      todayStart.setHours(0, 0, 0, 0)
+      let q = supabase
+        .from("cash_deposits")
+        .select("*")
+        .gte("deposit_date", todayStart.toISOString())
+        .order("deposit_date", { ascending: false })
+      if (branchId !== "all") q = q.eq("branch_id", branchId)
+      const { data } = await q
+      setDepositList(data || [])
+    } catch (err) {
+      console.error("Error fetching deposits:", err)
+    }
+  }
+
   const fetchData = async () => {
     if (!currentUser) return
     setRefreshing(true)
@@ -267,6 +297,7 @@ export function DailyInsight() {
   useEffect(() => {
     if (usersList.length > 0) {
       fetchData()
+      fetchDeposits(selectedBranch)
       setSelectedBarberFilter(null)
     }
   }, [datePreset, customStartDate, customEndDate, selectedBranch, usersList])
@@ -499,20 +530,30 @@ export function DailyInsight() {
             <Calendar className="h-4 w-4 text-red-500" />
             Rentang Waktu
           </Label>
-          <Select value={datePreset} onValueChange={(value) => setDatePreset(value)}>
-            <SelectTrigger className="bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 rounded-xl">
-              <SelectValue placeholder="Pilih Rentang Waktu" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Hari Ini (Today)</SelectItem>
-              <SelectItem value="yesterday">Kemarin (Yesterday)</SelectItem>
-              <SelectItem value="thisWeek">Minggu Ini</SelectItem>
-              <SelectItem value="lastWeek">Minggu Lalu</SelectItem>
-              <SelectItem value="thisMonth">Bulan Ini</SelectItem>
-              <SelectItem value="lastMonth">Bulan Lalu</SelectItem>
-              <SelectItem value="custom">Custom Tanggal (Custom Range)</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Select value={datePreset} onValueChange={(value) => setDatePreset(value)}>
+              <SelectTrigger className="bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 rounded-xl flex-1">
+                <SelectValue placeholder="Pilih Rentang Waktu" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Hari Ini (Today)</SelectItem>
+                <SelectItem value="yesterday">Kemarin (Yesterday)</SelectItem>
+                <SelectItem value="thisWeek">Minggu Ini</SelectItem>
+                <SelectItem value="lastWeek">Minggu Lalu</SelectItem>
+                <SelectItem value="thisMonth">Bulan Ini</SelectItem>
+                <SelectItem value="lastMonth">Bulan Lalu</SelectItem>
+                <SelectItem value="custom">Custom Tanggal (Custom Range)</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              onClick={() => setIsSetorModalOpen(true)}
+              className="flex-shrink-0 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md hover:shadow-lg transition-all font-semibold"
+              size="sm"
+            >
+              <Banknote className="h-4 w-4" />
+              Setor
+            </Button>
+          </div>
         </div>
 
         {/* Custom date range fields (only when 'custom' selected) */}

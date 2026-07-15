@@ -204,7 +204,7 @@ const calculateShiftTimes = (
   activeBreakStart: string | null,
   replacementCheckInTime: string | null = null
 ) => {
-  if (!checkInTime) return { workingHours: 0, breakTime: 0, isAutoBreak: false, currentBreakSeconds: 0 };
+  if (!checkInTime) return { workingHours: 0, breakTime: 0, isAutoBreak: false, currentBreakSeconds: 0, isShiftEnded: false };
 
   const checkIn = new Date(`${dateStr}T${checkInTime}`);
   let effectiveEnd = new Date();
@@ -223,6 +223,19 @@ const calculateShiftTimes = (
          shiftEnd.setDate(shiftEnd.getDate() + 1);
      }
      hasShiftEnd = true;
+  }
+
+  const now = new Date();
+  let isShiftEnded = false;
+  if (hasShiftEnd && now > shiftEnd) {
+      isShiftEnded = true;
+  }
+
+  // BATAS WAKTU: Karyawan tidak dihitung lembur. 
+  // Jika waktu sekarang (atau waktu checkOut) melebihi jam selesai shift, 
+  // maka jam kerja stop tepat di jam selesai shift.
+  if (hasShiftEnd && effectiveEnd > shiftEnd) {
+    effectiveEnd = shiftEnd;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -299,6 +312,7 @@ const calculateShiftTimes = (
       breakTime: totalBreakMinutes,
       isAutoBreak,
       currentBreakSeconds, // durasi istirahat saat ini dalam detik (0 jika tidak istirahat)
+      isShiftEnded
   }
 }
 
@@ -1273,6 +1287,7 @@ export function AttendanceSystem() {
     let totalBreakTime = shift.totalBreakTime;
     let isAutoBreak = false;
     let currentBreakSeconds = 0;
+    let isShiftEnded = false;
 
     if (shift.status === "present" || shift.status === "on-break" || shift.status === "checked-out") {
       const shiftData = allBranchShifts.find(s => String(s.branch_id) === String(shift.branchId) && (s.type === shift.shift || s.id === shift.shift));
@@ -1290,6 +1305,7 @@ export function AttendanceSystem() {
       totalBreakTime = calc.breakTime;
       isAutoBreak = calc.isAutoBreak;
       currentBreakSeconds = calc.currentBreakSeconds;
+      isShiftEnded = calc.isShiftEnded;
     }
 
     return {
@@ -1297,6 +1313,7 @@ export function AttendanceSystem() {
       breakTime: totalBreakTime,
       isAutoBreak,
       currentBreakSeconds,
+      isShiftEnded
     }
   }
 
@@ -1321,6 +1338,7 @@ export function AttendanceSystem() {
     let totalDailyBreaks = 0;
     let isAutoBreak = false;
     let currentBreakSeconds = 0;
+    let isShiftEnded = false;
 
     summary.shifts.forEach((shift) => {
       // Cari jam check-in pengganti (rekan kerja di cabang yang sama)
@@ -1330,6 +1348,7 @@ export function AttendanceSystem() {
       totalDailyBreaks += liveTimes.breakTime;
       if (liveTimes.isAutoBreak) isAutoBreak = true;
       if (liveTimes.currentBreakSeconds > 0) currentBreakSeconds = liveTimes.currentBreakSeconds;
+      if (liveTimes.isShiftEnded) isShiftEnded = true;
     });
 
     return {
@@ -1337,6 +1356,7 @@ export function AttendanceSystem() {
       totalDailyBreaks,
       isAutoBreak,
       currentBreakSeconds,
+      isShiftEnded
     };
   }
 
@@ -1634,30 +1654,38 @@ export function AttendanceSystem() {
                           )
                           return (
                             <>
-                              <Button
-                                onClick={() => handleBreakStart(employee)}
-                                disabled={isProcessing || !hasCover}
-                                title={!hasCover ? "Tidak ada teman yang standby di cabang ini" : ""}
-                                variant="outline"
-                                className="border-orange-300 text-orange-700 hover:bg-orange-50 font-medium px-3 py-2 text-xs sm:text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                                size="sm"
-                              >
-                                <Coffee className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                                Istirahat
-                              </Button>
-                              {!hasCover && (
-                                <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
-                                  ⚠️ Belum ada yang standby
-                                </span>
+                              {!liveTimes.isShiftEnded && (
+                                <>
+                                  <Button
+                                    onClick={() => handleBreakStart(employee)}
+                                    disabled={isProcessing || !hasCover}
+                                    title={!hasCover ? "Tidak ada teman yang standby di cabang ini" : ""}
+                                    variant="outline"
+                                    className="border-orange-300 text-orange-700 hover:bg-orange-50 font-medium px-3 py-2 text-xs sm:text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                    size="sm"
+                                  >
+                                    <Coffee className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                                    Istirahat
+                                  </Button>
+                                  {!hasCover && (
+                                    <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
+                                      ⚠️ Belum ada yang standby
+                                    </span>
+                                  )}
+                                </>
                               )}
                               <Button
                                 onClick={() => openCheckOutCamera(employee)}
-                                disabled={isProcessing}
-                                className="bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-medium px-3 py-2 text-xs sm:text-sm rounded-lg"
+                                disabled={isProcessing || liveTimes.isShiftEnded}
+                                className={
+                                  liveTimes.isShiftEnded
+                                    ? "bg-gray-100 text-gray-500 border border-gray-200 cursor-not-allowed font-medium px-3 py-2 text-xs sm:text-sm rounded-lg"
+                                    : "bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-medium px-3 py-2 text-xs sm:text-sm rounded-lg"
+                                }
                                 size="sm"
                               >
                                 <LogOut className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                                Check Out
+                                {liveTimes.isShiftEnded ? "Sudah Pulang" : "Check Out"}
                               </Button>
                             </>
                           )
@@ -1673,25 +1701,33 @@ export function AttendanceSystem() {
                           )
                           return (
                             <>
-                              {hasCover ? (
-                                <div className="bg-orange-50 text-orange-600 font-medium px-3 py-2 text-xs sm:text-sm rounded-lg flex items-center border border-orange-200">
-                                  <Coffee className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                                  Waktunya Istirahat ✅
-                                </div>
-                              ) : (
-                                <div className="bg-yellow-50 text-yellow-700 font-medium px-3 py-2 text-xs sm:text-sm rounded-lg flex items-center border border-yellow-200">
-                                  <Coffee className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                                  ⚠️ Waktunya Istirahat — Belum ada yang standby
-                                </div>
+                              {!liveTimes.isShiftEnded && (
+                                <>
+                                  {hasCover ? (
+                                    <div className="bg-orange-50 text-orange-600 font-medium px-3 py-2 text-xs sm:text-sm rounded-lg flex items-center border border-orange-200">
+                                      <Coffee className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                                      Waktunya Istirahat ✅
+                                    </div>
+                                  ) : (
+                                    <div className="bg-yellow-50 text-yellow-700 font-medium px-3 py-2 text-xs sm:text-sm rounded-lg flex items-center border border-yellow-200">
+                                      <Coffee className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                                      ⚠️ Waktunya Istirahat — Belum ada yang standby
+                                    </div>
+                                  )}
+                                </>
                               )}
                               <Button
                                 onClick={() => openCheckOutCamera(employee)}
-                                disabled={isProcessing}
-                                className="bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-medium px-3 py-2 text-xs sm:text-sm rounded-lg"
+                                disabled={isProcessing || liveTimes.isShiftEnded}
+                                className={
+                                  liveTimes.isShiftEnded
+                                    ? "bg-gray-100 text-gray-500 border border-gray-200 cursor-not-allowed font-medium px-3 py-2 text-xs sm:text-sm rounded-lg"
+                                    : "bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-medium px-3 py-2 text-xs sm:text-sm rounded-lg"
+                                }
                                 size="sm"
                               >
                                 <LogOut className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                                Check Out
+                                {liveTimes.isShiftEnded ? "Sudah Pulang" : "Check Out"}
                               </Button>
                             </>
                           )
