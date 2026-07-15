@@ -37,6 +37,7 @@ interface KasbonRequest {
   due_date?: string
   paid_amount?: number
   remaining_amount?: number
+  payment_method?: "cash" | "salary_deduction"
   user?: {
     name: string
     email: string
@@ -45,6 +46,15 @@ interface KasbonRequest {
   approver?: {
     name: string
   }
+}
+
+interface KasbonPaymentHistory {
+  id: number
+  kasbon_id: number
+  amount: number
+  payment_method: string
+  payment_type: string
+  payment_date: string
 }
 
 interface User {
@@ -62,12 +72,17 @@ export default function KasbonManagement() {
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false)
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false)
   const [isExtendDialogOpen, setIsExtendDialogOpen] = useState(false)
+  const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false)
   const [rejectingKasbon, setRejectingKasbon] = useState<KasbonRequest | null>(null)
   const [payingKasbon, setPayingKasbon] = useState<KasbonRequest | null>(null)
   const [extendingKasbon, setExtendingKasbon] = useState<KasbonRequest | null>(null)
+  const [selectedHistoryKasbon, setSelectedHistoryKasbon] = useState<KasbonRequest | null>(null)
+  const [paymentHistory, setPaymentHistory] = useState<KasbonPaymentHistory[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
   const [rejectionReason, setRejectionReason] = useState("")
   const [paymentAmount, setPaymentAmount] = useState("")
-  const [paymentType, setPaymentType] = useState<"full" | "partial">("full")
+  const [paymentType, setPaymentType] = useState<"full" | "partial" | "salary_deduction">("full")
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "salary_deduction">("cash")
   const [newDueDate, setNewDueDate] = useState("")
   const [editingKasbon, setEditingKasbon] = useState<KasbonRequest | null>(null)
   const [formData, setFormData] = useState({
@@ -163,6 +178,7 @@ export default function KasbonManagement() {
     const remaining = kasbon.amount - (kasbon.paid_amount || 0);
     setPaymentAmount(formatInputCurrency(remaining.toString()));
     setPaymentType("full");
+    setPaymentMethod("cash");
     setIsPaymentDialogOpen(true);
   };
 
@@ -199,27 +215,47 @@ export default function KasbonManagement() {
       const newPaidAmount = (payingKasbon.paid_amount || 0) + amount;
       const newRemainingAmount = payingKasbon.amount - newPaidAmount;
       const newStatus = newPaidAmount >= payingKasbon.amount ? "paid" : "approved";
+      const method = paymentMethod;
 
-      const { error } = await supabase
+      const { error: updateError } = await supabase
         .from("kasbon")
         .update({
           paid_amount: newPaidAmount,
           remaining_amount: newRemainingAmount,
           status: newStatus,
+          payment_method: method,
           updated_at: new Date().toISOString(),
         })
         .eq("id", payingKasbon.id);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
 
+      // Insert payment history
+      const { error: insertError } = await supabase
+        .from("kasbon_payments")
+        .insert({
+          kasbon_id: payingKasbon.id, // UUID string
+          amount: amount,
+          payment_method: method,
+          payment_type: paymentType,
+          payment_date: new Date().toISOString(),
+        });
+
+      if (insertError) {
+        console.error("Failed to insert kasbon payment history:", JSON.stringify(insertError));
+        // We don't throw here to avoid failing the whole transaction if just the log fails
+      }
+
+      const methodLabel = method === "salary_deduction" ? "potong gaji" : paymentType === "full" ? "lunas" : "cicilan";
       toast({
         title: "Berhasil",
-        description: `Pembayaran ${paymentType === "full" ? "lunas" : "cicilan"} sebesar ${new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR" }).format(amount)} berhasil dicatat`,
+        description: `Pembayaran ${methodLabel} sebesar ${new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR" }).format(amount)} berhasil dicatat`,
       });
 
       setIsPaymentDialogOpen(false);
       setPayingKasbon(null);
       setPaymentAmount("");
+      setPaymentMethod("cash");
       
       // Refresh tanpa show loading
       await fetchData(false);
@@ -236,6 +272,33 @@ export default function KasbonManagement() {
         description: errorMessage,
         variant: "destructive",
       });
+    }
+  };
+
+  const openHistoryDialog = async (kasbon: KasbonRequest) => {
+    setSelectedHistoryKasbon(kasbon);
+    setIsHistoryDialogOpen(true);
+    setLoadingHistory(true);
+    
+    try {
+      const { data, error } = await supabase
+        .from("kasbon_payments")
+        .select("*")
+        .eq("kasbon_id", kasbon.id) // UUID string match
+        .order("payment_date", { ascending: false });
+        
+      if (error) throw error;
+      setPaymentHistory(data || []);
+    } catch (error) {
+      console.error("Failed to fetch payment history:", error);
+      toast({
+        title: "Error",
+        description: "Gagal memuat riwayat pembayaran",
+        variant: "destructive",
+      });
+      setPaymentHistory([]);
+    } finally {
+      setLoadingHistory(false);
     }
   };
 
@@ -776,8 +839,8 @@ export default function KasbonManagement() {
                     <TableHead>Dibayar</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Jatuh Tempo</TableHead>
+                    <TableHead>Cara Bayar</TableHead>
                     <TableHead>Alasan</TableHead>
-                    <TableHead>Disetujui Oleh</TableHead>
                     <TableHead>Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -828,8 +891,20 @@ export default function KasbonManagement() {
                           <span className="text-gray-400 text-sm">-</span>
                         )}
                       </TableCell>
+                      <TableCell>
+                        {kasbon.payment_method === "salary_deduction" ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">
+                            ✂️ Potong Gaji
+                          </span>
+                        ) : kasbon.paid_amount && kasbon.paid_amount > 0 ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                            💵 Tunai
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-sm">-</span>
+                        )}
+                      </TableCell>
                       <TableCell className="max-w-[200px] truncate">{kasbon.reason}</TableCell>
-                      <TableCell>{kasbon.approver?.name || "-"}</TableCell>
                       <TableCell>
                         <div className="flex space-x-2 flex-wrap gap-1">
                           {kasbon.status === "approved" && (
@@ -855,6 +930,16 @@ export default function KasbonManagement() {
                                 </Button>
                               )}
                             </>
+                          )}
+                          {(kasbon.paid_amount || 0) > 0 && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openHistoryDialog(kasbon)}
+                              className="text-amber-600 hover:text-amber-700"
+                            >
+                              Riwayat
+                            </Button>
                           )}
                           <Button variant="outline" size="sm" onClick={() => handleEdit(kasbon)}>
                             <Edit className="w-4 h-4" />
@@ -984,7 +1069,34 @@ export default function KasbonManagement() {
                 </div>
 
                 <div className="space-y-3">
-                  <Label className="text-base">Tipe Pembayaran</Label>
+                  <Label className="text-base font-semibold">Metode Pembayaran</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      variant={paymentMethod === "cash" ? "default" : "outline"}
+                      className="w-full"
+                      onClick={() => setPaymentMethod("cash")}
+                    >
+                      💵 Bayar Tunai
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={paymentMethod === "salary_deduction" ? "default" : "outline"}
+                      className={`w-full ${paymentMethod === "salary_deduction" ? "bg-orange-500 hover:bg-orange-600 border-orange-500" : "text-orange-600 border-orange-300 hover:bg-orange-50"}`}
+                      onClick={() => setPaymentMethod("salary_deduction")}
+                    >
+                      ✂️ Potong Gaji
+                    </Button>
+                  </div>
+
+                  {paymentMethod === "salary_deduction" && (
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-orange-800">
+                      <p className="font-semibold mb-1">⚠️ Potong dari Gaji</p>
+                      <p className="text-xs text-orange-600">Jumlah kasbon akan dipotong langsung dari gaji karyawan pada periode penggajian berikutnya.</p>
+                    </div>
+                  )}
+
+                  <Label className="text-base font-semibold">Tipe Pembayaran</Label>
                   <div className="grid grid-cols-2 gap-3">
                     <Button
                       type="button"
@@ -1051,6 +1163,7 @@ export default function KasbonManagement() {
                 setIsPaymentDialogOpen(false);
                 setPayingKasbon(null);
                 setPaymentAmount("");
+                setPaymentMethod("cash");
               }}
             >
               Batal
@@ -1141,6 +1254,81 @@ export default function KasbonManagement() {
             >
               <Clock className="w-4 h-4 mr-2" />
               Perpanjang
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* History Dialog */}
+      <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Riwayat Pembayaran Kasbon</DialogTitle>
+            <DialogDescription>
+              {selectedHistoryKasbon?.user?.name ? `Riwayat untuk ${selectedHistoryKasbon.user.name}` : "Memuat data..."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4">
+            {loadingHistory ? (
+              <div className="flex justify-center p-4">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
+              </div>
+            ) : paymentHistory.length === 0 ? (
+              <div className="text-center p-4 text-gray-500">Belum ada riwayat pembayaran</div>
+            ) : (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tanggal</TableHead>
+                      <TableHead>Metode</TableHead>
+                      <TableHead>Tipe</TableHead>
+                      <TableHead className="text-right">Jumlah</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paymentHistory.map((history) => (
+                      <TableRow key={history.id}>
+                        <TableCell>
+                          {new Date(history.payment_date).toLocaleString("id-ID")}
+                        </TableCell>
+                        <TableCell>
+                          {history.payment_method === "salary_deduction" ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">
+                              ✂️ Potong Gaji
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                              💵 Tunai / Transfer
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {history.payment_type === "full" ? "Lunas" : "Cicilan"}
+                        </TableCell>
+                        <TableCell className="text-right font-medium text-green-600">
+                          {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR" }).format(history.amount)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsHistoryDialogOpen(false);
+                setSelectedHistoryKasbon(null);
+                setPaymentHistory([]);
+              }}
+            >
+              Tutup
             </Button>
           </DialogFooter>
         </DialogContent>

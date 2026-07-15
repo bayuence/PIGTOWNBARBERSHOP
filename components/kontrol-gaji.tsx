@@ -94,6 +94,7 @@ export function KontrolGaji({
   const [branches, setBranches] = useState<any[]>([]);
   const [earnedCommissions, setEarnedCommissions] = useState<EarnedCommissionStats>({});
   const [bonusPenaltyData, setBonusPenaltyData] = useState<BonusPenaltyData>({});
+  const [kasbonDeductions, setKasbonDeductions] = useState<{ [employeeId: string]: number }>({});
   const [isOnline, setIsOnline] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'reconnecting'>('connected');
   
@@ -185,6 +186,50 @@ export function KontrolGaji({
       console.log('✅ Bonus/penalty data loaded:', result);
     } catch (error) {
       console.error("❌ Error fetching bonus/penalty data:", error);
+    }
+  }, []);
+
+  // Fungsi untuk mengambil data potongan kasbon bulan ini (salary_deduction)
+  const fetchKasbonDeductions = useCallback(async () => {
+    try {
+      const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+      // Fetch all kasbon payments this month with salary_deduction method
+      const { data: payments, error } = await supabase
+        .from('kasbon_payments')
+        .select('kasbon_id, amount, payment_method')
+        .eq('payment_method', 'salary_deduction')
+        .gte('payment_date', startOfMonth);
+
+      if (error) { console.error('❌ Error fetching kasbon deductions:', error); return; }
+
+      if (!payments || payments.length === 0) {
+        setKasbonDeductions({});
+        return;
+      }
+
+      // Fetch kasbon records to get user_id mapping
+      const kasbonIds = [...new Set(payments.map(p => p.kasbon_id))];
+      const { data: kasbonRecords } = await supabase
+        .from('kasbon')
+        .select('id, user_id')
+        .in('id', kasbonIds);
+
+      const kasbonUserMap = new Map(
+        (kasbonRecords || []).map(k => [String(k.id), String(k.user_id)])
+      );
+
+      const result: { [employeeId: string]: number } = {};
+      payments.forEach(p => {
+        const userId = kasbonUserMap.get(String(p.kasbon_id));
+        if (userId) {
+          result[userId] = (result[userId] || 0) + Number(p.amount);
+        }
+      });
+
+      setKasbonDeductions(result);
+      console.log('✅ Kasbon deductions loaded:', result);
+    } catch (error) {
+      console.error('❌ Error fetching kasbon deductions:', error);
     }
   }, []);
 
@@ -352,6 +397,7 @@ export function KontrolGaji({
     
     fetchData(true);
     fetchBonusPenaltyData();
+    fetchKasbonDeductions();
     
     const fetchActiveServices = async () => {
       setServicesLoading(true);
@@ -516,11 +562,14 @@ export function KontrolGaji({
 
   const getBonusPenaltyData = (employeeId: string) => bonusPenaltyData[employeeId] || { bonus: 0, penalty: 0 };
 
+  const getKasbonDeduction = (employeeId: string) => kasbonDeductions[employeeId] || 0;
+
   const calculateTotalSalary = (employee: Employee) => {
     const baseSalary = employee.baseSalary || 0;
     const totalCommission = getEarnedCommission(employee.id);
     const bonusData = getBonusPenaltyData(employee.id);
-    return baseSalary + totalCommission + bonusData.bonus - bonusData.penalty;
+    const kasbonCut = getKasbonDeduction(employee.id);
+    return baseSalary + totalCommission + bonusData.bonus - bonusData.penalty - kasbonCut;
   };
 
   const openKelolaGajiModal = (employee: Employee) => {
@@ -532,6 +581,7 @@ export function KontrolGaji({
   const openSlipGajiModal = (employee: Employee) => {
     setSelectedEmployee(employee);
     setShowSlipModal(true);
+    fetchKasbonDeductions(); // refresh potongan kasbon saat slip dibuka
   };
 
   const handlePrintSlip = () => {
@@ -609,6 +659,7 @@ export function KontrolGaji({
       
       <div class="section"><h3>POTONGAN</h3>
           <div class="item"><span>Denda/Penalti</span><span>Rp ${formatNominal(bonusData.penalty)}</span></div>
+          ${getKasbonDeduction(selectedEmployee.id) > 0 ? `<div class="item" style="color:#c0392b"><span>✂️ Potongan Kasbon</span><span>- Rp ${formatNominal(getKasbonDeduction(selectedEmployee.id))}</span></div>` : ''}
       </div>
       <div class="total item"><span>GAJI BERSIH</span><span>Rp ${formatNominal(calculateTotalSalary(selectedEmployee))}</span></div>
       </body></html>`;
@@ -1237,10 +1288,19 @@ export function KontrolGaji({
                     <span className="text-sm font-semibold text-red-700">Potongan</span>
                   </div>
                   <div className="px-4">
-                    <div className="flex justify-between items-center py-3">
+                    <div className="flex justify-between items-center py-3 border-b border-gray-50">
                       <span className="text-sm text-gray-600">Denda / Penalti</span>
                       <span className="text-sm font-semibold text-red-600">- Rp {formatNominal(getBonusPenaltyData(selectedEmployee.id).penalty)}</span>
                     </div>
+                    {getKasbonDeduction(selectedEmployee.id) > 0 && (
+                      <div className="flex justify-between items-center py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-600">✂️ Potongan Kasbon</span>
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700">Bulan ini</span>
+                        </div>
+                        <span className="text-sm font-semibold text-orange-600">- Rp {formatNominal(getKasbonDeduction(selectedEmployee.id))}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 

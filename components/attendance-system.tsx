@@ -204,7 +204,7 @@ const calculateShiftTimes = (
   activeBreakStart: string | null,
   replacementCheckInTime: string | null = null
 ) => {
-  if (!checkInTime) return { workingHours: 0, breakTime: 0, isAutoBreak: false };
+  if (!checkInTime) return { workingHours: 0, breakTime: 0, isAutoBreak: false, currentBreakSeconds: 0 };
 
   const checkIn = new Date(`${dateStr}T${checkInTime}`);
   let effectiveEnd = new Date();
@@ -225,21 +225,30 @@ const calculateShiftTimes = (
      hasShiftEnd = true;
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // PERBAIKAN UTAMA: Ketika karyawan sedang istirahat (activeBreakStart ada),
+  // FREEZE effectiveEnd di waktu break dimulai — jam kerja BERHENTI naik.
+  // Timer istirahat dihitung secara terpisah di bawah.
+  // ─────────────────────────────────────────────────────────────────────────
+  let currentBreakSeconds = 0; // durasi istirahat saat ini (live, dalam detik)
+
+  if (activeBreakStart && !checkOutTime) {
+    const bStart = new Date(`${dateStr}T${activeBreakStart}`);
+    if (bStart > checkIn) {
+      // Freeze jam kerja di saat break dimulai
+      effectiveEnd = bStart;
+    }
+    // Hitung durasi istirahat sekarang (live counter)
+    const now = new Date();
+    const bEnd = (hasShiftEnd && now > shiftEnd) ? shiftEnd : now;
+    currentBreakSeconds = Math.max(0, Math.floor((bEnd.getTime() - bStart.getTime()) / 1000));
+  }
+
   let workMinutes = (effectiveEnd.getTime() - checkIn.getTime()) / (1000 * 60);
   if (workMinutes < 0) workMinutes = 0;
 
-  // Break dari manual (yang sudah selesai)
+  // Break dari manual (yang sudah selesai sebelum break aktif saat ini)
   let totalBreakMinutes = manualBreakDuration || 0;
-  
-  // Ongoing manual break
-  if (activeBreakStart && !checkOutTime) {
-      const bStart = new Date(`${dateStr}T${activeBreakStart}`);
-      let bEnd = new Date();
-      if (hasShiftEnd && bEnd > shiftEnd) bEnd = shiftEnd;
-      if (bEnd > bStart) {
-          totalBreakMinutes += (bEnd.getTime() - bStart.getTime()) / (1000 * 60);
-      }
-  }
 
   // Break terjadwal dari break_times:
   // Wajib dilaksanakan, tapi efektif mulai dari max(break_start, replacementCheckInTime)
@@ -288,9 +297,11 @@ const calculateShiftTimes = (
   return {
       workingHours: (workMinutes - totalBreakMinutes) / 60,
       breakTime: totalBreakMinutes,
-      isAutoBreak
+      isAutoBreak,
+      currentBreakSeconds, // durasi istirahat saat ini dalam detik (0 jika tidak istirahat)
   }
 }
+
 
 export function AttendanceSystem() {
   const [selectedBranch, setSelectedBranch] = useState("all")
@@ -1042,7 +1053,7 @@ export function AttendanceSystem() {
 
         if (activeShift.breakStart) {
           const breakStart = new Date(`${selectedDate}T${activeShift.breakStart}`)
-          const breakDuration = Math.round((now.getTime() - breakStart.getTime()) / (1000 * 60))
+          const breakDuration = (now.getTime() - breakStart.getTime()) / (1000 * 60) // Do not round, keep fractions for seconds precision
           updates.break_duration = (activeShift.manualBreakDuration || 0) + breakDuration
         }
       }
@@ -1261,6 +1272,7 @@ export function AttendanceSystem() {
     let totalWorkingHours = shift.totalWorkingHours;
     let totalBreakTime = shift.totalBreakTime;
     let isAutoBreak = false;
+    let currentBreakSeconds = 0;
 
     if (shift.status === "present" || shift.status === "on-break" || shift.status === "checked-out") {
       const shiftData = allBranchShifts.find(s => String(s.branch_id) === String(shift.branchId) && (s.type === shift.shift || s.id === shift.shift));
@@ -1277,12 +1289,14 @@ export function AttendanceSystem() {
       totalWorkingHours = calc.workingHours;
       totalBreakTime = calc.breakTime;
       isAutoBreak = calc.isAutoBreak;
+      currentBreakSeconds = calc.currentBreakSeconds;
     }
 
     return {
       workingHours: totalWorkingHours,
       breakTime: totalBreakTime,
-      isAutoBreak
+      isAutoBreak,
+      currentBreakSeconds,
     }
   }
 
@@ -1306,6 +1320,7 @@ export function AttendanceSystem() {
     let totalDailyHours = 0;
     let totalDailyBreaks = 0;
     let isAutoBreak = false;
+    let currentBreakSeconds = 0;
 
     summary.shifts.forEach((shift) => {
       // Cari jam check-in pengganti (rekan kerja di cabang yang sama)
@@ -1314,12 +1329,14 @@ export function AttendanceSystem() {
       totalDailyHours += liveTimes.workingHours;
       totalDailyBreaks += liveTimes.breakTime;
       if (liveTimes.isAutoBreak) isAutoBreak = true;
+      if (liveTimes.currentBreakSeconds > 0) currentBreakSeconds = liveTimes.currentBreakSeconds;
     });
 
     return {
       totalDailyHours,
       totalDailyBreaks,
-      isAutoBreak
+      isAutoBreak,
+      currentBreakSeconds,
     };
   }
 
@@ -1345,6 +1362,16 @@ export function AttendanceSystem() {
 
     return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
   }
+
+  // Format detik mentah menjadi HH:MM:SS (untuk live break timer)
+  const formatSeconds = (totalSeconds: number): string => {
+    if (totalSeconds <= 0) return "00:00:00"
+    const h = Math.floor(totalSeconds / 3600)
+    const m = Math.floor((totalSeconds % 3600) / 60)
+    const s = totalSeconds % 60
+    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
+  }
+
 
   const allShifts = dailySummaries.flatMap((summary) => summary.shifts)
   const filteredShifts =
@@ -1494,21 +1521,26 @@ export function AttendanceSystem() {
                         </div>
 
                         <div className="text-right">
-                          <div className="text-xs sm:text-sm text-gray-600">Total Hari Ini</div>
-                          <div className="font-semibold text-base sm:text-lg text-blue-600">
+                          <div className="text-xs sm:text-sm text-gray-600">
+                            {summary.currentStatus === "on-break" ? "Jam Kerja (Berhenti)" : "Total Hari Ini"}
+                          </div>
+                          <div className={`font-semibold text-base sm:text-lg ${summary.currentStatus === "on-break" ? "text-gray-400" : "text-blue-600"}`}>
                             {formatDetailedTime(liveTimes.totalDailyHours)}
                           </div>
+                          {summary.currentStatus === "on-break" && liveTimes.currentBreakSeconds > 0 && (
+                            <div className="mt-1">
+                              <div className="text-xs text-amber-600 font-medium">⏸ Sedang Istirahat</div>
+                              <div className="font-bold text-base sm:text-lg text-amber-500 animate-pulse">
+                                {formatSeconds(liveTimes.currentBreakSeconds)}
+                              </div>
+                            </div>
+                          )}
                           <div className="text-xs text-gray-500">
                             {summary.shifts.length} shift
                             {liveTimes.totalDailyBreaks > 0 && (
                               <span> • {formatBreakTime(liveTimes.totalDailyBreaks)} total istirahat</span>
                             )}
                           </div>
-                          {summary.currentStatus === "on-break" && (
-                            <div className="text-xs text-orange-600 font-medium mt-1 bg-orange-50 px-2 py-1 rounded">
-                              🟡 Sedang istirahat
-                            </div>
-                          )}
                         </div>
                       </div>
 
@@ -1543,9 +1575,28 @@ export function AttendanceSystem() {
                                       )}
                                     </div>
                                     <div className="text-right">
-                                      <div className="font-medium text-blue-600 text-sm sm:text-base">
-                                        {formatDetailedTime(liveShift.workingHours)}
-                                      </div>
+                                      {shift.status === "on-break" ? (
+                                        <>
+                                          {/* Jam kerja FREEZE saat istirahat */}
+                                          <div className="font-medium text-gray-400 text-sm sm:text-base">
+                                            {formatDetailedTime(liveShift.workingHours)}
+                                          </div>
+                                          <div className="text-xs text-gray-400">jam kerja (berhenti)</div>
+                                          {/* Timer istirahat LIVE */}
+                                          {liveShift.currentBreakSeconds > 0 && (
+                                            <div className="mt-1">
+                                              <div className="font-bold text-amber-500 text-sm sm:text-base animate-pulse">
+                                                {formatSeconds(liveShift.currentBreakSeconds)}
+                                              </div>
+                                              <div className="text-xs text-amber-500">istirahat</div>
+                                            </div>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <div className="font-medium text-blue-600 text-sm sm:text-base">
+                                          {formatDetailedTime(liveShift.workingHours)}
+                                        </div>
+                                      )}
                                       <Badge className={`text-xs ${getStatusColor(shift.status)}`}>
                                         {shift.status === "present" && "Sedang Bekerja"}
                                         {shift.status === "on-break" && "Istirahat"}

@@ -156,6 +156,20 @@ export const kasbon = pgTable('kasbon', {
 });
 
 // =====================================================
+// KASBON PAYMENTS TABLE
+// =====================================================
+
+export const kasbonPayments = pgTable('kasbon_payments', {
+  id: serial('id').primaryKey(),
+  kasbonId: text('kasbon_id').notNull(), // UUID string matching kasbon.id
+  amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
+  paymentMethod: text('payment_method').notNull(), // cash, transfer, salary_deduction
+  paymentType: text('payment_type').notNull(), // full, installment
+  paymentDate: timestamp('payment_date').notNull().defaultNow(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+// =====================================================
 // EXPENSES TABLE
 // =====================================================
 
@@ -326,7 +340,7 @@ export const attendanceRelations = relations(attendance, ({ one }) => ({
   }),
 }));
 
-export const kasbonRelations = relations(kasbon, ({ one }) => ({
+export const kasbonRelations = relations(kasbon, ({ one, many }) => ({
   user: one(users, {
     fields: [kasbon.userId],
     references: [users.id],
@@ -334,6 +348,14 @@ export const kasbonRelations = relations(kasbon, ({ one }) => ({
   approver: one(users, {
     fields: [kasbon.approvedBy],
     references: [users.id],
+  }),
+  payments: many(kasbonPayments),
+}));
+
+export const kasbonPaymentsRelations = relations(kasbonPayments, ({ one }) => ({
+  kasbon: one(kasbon, {
+    fields: [kasbonPayments.kasbonId],
+    references: [kasbon.id],
   }),
 }));
 
