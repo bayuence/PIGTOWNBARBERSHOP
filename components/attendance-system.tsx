@@ -86,17 +86,23 @@ interface BranchShift {
   type: string
   startTime?: string
   endTime?: string
+  branch_id?: string
+  break_times?: Array<{ start: string; end: string }>
 }
 
-async function getBranchShifts(branchId: string): Promise<{ data: BranchShift[] | null; error: any }> {
+async function getBranchShifts(branchId?: string): Promise<{ data: BranchShift[] | null; error: any }> {
   try {
-    // Query branch_shifts table instead of branches.shifts
-    const { data: shiftsData, error } = await supabase
+    let query = supabase
       .from("branch_shifts")
       .select("*")
-      .eq("branch_id", branchId)
       .eq("is_active", true)
       .order("start_time")
+
+    if (branchId) {
+      query = query.eq("branch_id", branchId)
+    }
+
+    const { data: shiftsData, error } = await query
 
     if (error) {
       console.error("Error fetching branch shifts:", {
@@ -106,17 +112,8 @@ async function getBranchShifts(branchId: string): Promise<{ data: BranchShift[] 
         code: error.code
       })
       
-      // Return default shift on error
       return { 
-        data: [
-          {
-            id: "1",
-            name: "Shift Reguler",
-            start_time: "09:00",
-            end_time: "21:00",
-            type: "reguler",
-          },
-        ], 
+        data: [], 
         error: null 
       }
     }
@@ -130,6 +127,8 @@ async function getBranchShifts(branchId: string): Promise<{ data: BranchShift[] 
       type: shift.shift_type,
       startTime: shift.start_time, // Add alias for compatibility
       endTime: shift.end_time, // Add alias for compatibility
+      branch_id: shift.branch_id,
+      break_times: shift.break_times || [],
     })) || []
 
     // If no shifts found, return default
@@ -167,6 +166,90 @@ async function getBranchShifts(branchId: string): Promise<{ data: BranchShift[] 
   }
 }
 
+const calculateShiftTimes = (shiftData: BranchShift | undefined, checkInTime: string | null, checkOutTime: string | null, breakStart: string | null, manualBreakDuration: number, dateStr: string, activeBreakStart: string | null) => {
+  if (!checkInTime) return { workingHours: 0, breakTime: 0, isAutoBreak: false };
+
+  const checkIn = new Date(`${dateStr}T${checkInTime}`);
+  let effectiveEnd = new Date();
+  
+  if (checkOutTime) {
+    effectiveEnd = new Date(`${dateStr}T${checkOutTime}`);
+  }
+
+  let shiftEnd = new Date();
+  let hasShiftEnd = false;
+  if (shiftData?.end_time) {
+     const endParts = shiftData.end_time.split(":");
+     shiftEnd = new Date(checkIn);
+     shiftEnd.setHours(parseInt(endParts[0]), parseInt(endParts[1]), 0, 0);
+     if (shiftEnd < checkIn) {
+         // shift passed midnight
+         shiftEnd.setDate(shiftEnd.getDate() + 1);
+     }
+     hasShiftEnd = true;
+  }
+
+  // Cap effective end at shift end
+  if (hasShiftEnd && effectiveEnd > shiftEnd) {
+      effectiveEnd = shiftEnd;
+  }
+
+  let workMinutes = (effectiveEnd.getTime() - checkIn.getTime()) / (1000 * 60);
+  if (workMinutes < 0) workMinutes = 0;
+
+  let totalBreakMinutes = manualBreakDuration || 0;
+  
+  // Calculate ongoing manual break
+  if (activeBreakStart && !checkOutTime) {
+      const bStart = new Date(`${dateStr}T${activeBreakStart}`);
+      let bEnd = new Date();
+      if (hasShiftEnd && bEnd > shiftEnd) bEnd = shiftEnd;
+      if (bEnd > bStart) {
+          totalBreakMinutes += (bEnd.getTime() - bStart.getTime()) / (1000 * 60);
+      }
+  }
+
+  let isAutoBreak = false;
+
+  // Subtract auto breaks that fall between checkIn and effectiveEnd
+  if (shiftData?.break_times && shiftData.break_times.length > 0) {
+      shiftData.break_times.forEach(bt => {
+          if (!bt.start || !bt.end) return;
+          const s = bt.start.split(":");
+          const e = bt.end.split(":");
+          const bStart = new Date(checkIn);
+          bStart.setHours(parseInt(s[0]), parseInt(s[1]), 0, 0);
+          const bEnd = new Date(checkIn);
+          bEnd.setHours(parseInt(e[0]), parseInt(e[1]), 0, 0);
+          
+          if (bEnd < bStart) bEnd.setDate(bEnd.getDate() + 1);
+
+          // Find intersection of [checkIn, effectiveEnd] and [bStart, bEnd]
+          const overlapStart = new Date(Math.max(checkIn.getTime(), bStart.getTime()));
+          const overlapEnd = new Date(Math.min(effectiveEnd.getTime(), bEnd.getTime()));
+
+          if (overlapStart < overlapEnd) {
+              const overlapMinutes = (overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60);
+              totalBreakMinutes += overlapMinutes; 
+          }
+
+          // check if we are currently in an auto break
+          const now = new Date();
+          if (!checkOutTime && now >= bStart && now <= bEnd) {
+              isAutoBreak = true;
+          }
+      });
+  }
+
+  if (totalBreakMinutes > workMinutes) totalBreakMinutes = workMinutes;
+
+  return {
+      workingHours: (workMinutes - totalBreakMinutes) / 60,
+      breakTime: totalBreakMinutes,
+      isAutoBreak
+  }
+}
+
 export function AttendanceSystem() {
   const [selectedBranch, setSelectedBranch] = useState("all")
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"))
@@ -186,6 +269,7 @@ export function AttendanceSystem() {
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
   const [branches, setBranches] = useState<Branch[]>([])
   const [branchShifts, setBranchShifts] = useState<BranchShift[]>([])
+  const [allBranchShifts, setAllBranchShifts] = useState<BranchShift[]>([])
   const [isCameraReady, setIsCameraReady] = useState(false)
   const [branchIdMap, setBranchIdMap] = useState<Map<string, string>>(new Map())
   const [isBranchWarningOpen, setIsBranchWarningOpen] = useState(false)
@@ -203,6 +287,11 @@ export function AttendanceSystem() {
 
   const loadEmployeesAndBranches = useCallback(async () => {
     try {
+      const { data: allShifts } = await getBranchShifts()
+      if (allShifts) {
+        setAllBranchShifts(allShifts)
+      }
+
       const { data: usersData, error: usersError } = await supabase.from("users").select("*").eq("status", "active")
 
       if (usersError) {
@@ -397,39 +486,21 @@ export function AttendanceSystem() {
             status = "absent"
           }
 
-          let totalWorkingHours = 0
-          if (attendanceData.check_in_time && attendanceData.check_out_time) {
-            // Parse time properly: combine date + time
-            const checkIn = new Date(`${attendanceData.date}T${attendanceData.check_in_time}`)
-            const checkOut = new Date(`${attendanceData.date}T${attendanceData.check_out_time}`)
-            const workMinutes = (checkOut.getTime() - checkIn.getTime()) / (1000 * 60)
-            const breakMinutes = attendanceData.break_duration || 0
-            totalWorkingHours = Math.max(0, (workMinutes - breakMinutes) / 60)
-          } else if (attendanceData.check_in_time && !attendanceData.check_out_time) {
-            // Still working - calculate from check-in to now
-            const checkIn = new Date(`${attendanceData.date}T${attendanceData.check_in_time}`)
-            const now = new Date()
-            const workMinutes = (now.getTime() - checkIn.getTime()) / (1000 * 60)
-            const breakMinutes = attendanceData.break_duration || 0
-            totalWorkingHours = Math.max(0, (workMinutes - breakMinutes) / 60)
-          }
-
-          let totalBreakMinutes = attendanceData.break_duration || 0
-          if (attendanceData.break_start_time && attendanceData.break_end_time) {
-            const breakStart = new Date(`${attendanceData.date}T${attendanceData.break_start_time}`)
-            const breakEnd = new Date(`${attendanceData.date}T${attendanceData.break_end_time}`)
-            const calculatedBreakMinutes = (breakEnd.getTime() - breakStart.getTime()) / (1000 * 60)
-            totalBreakMinutes = Math.max(totalBreakMinutes, calculatedBreakMinutes)
-          } else if (attendanceData.break_start_time && !attendanceData.break_end_time) {
-            // Currently on break - calculate break time so far
-            const breakStart = new Date(`${attendanceData.date}T${attendanceData.break_start_time}`)
-            const now = new Date()
-            const calculatedBreakMinutes = (now.getTime() - breakStart.getTime()) / (1000 * 60)
-            totalBreakMinutes = calculatedBreakMinutes
-          }
-
           let shiftName = attendanceData.shift_type || "Unknown"
-          // Removed branches.shifts lookup since we're not joining branches anymore
+          const shiftData = allBranchShifts.find(s => String(s.branch_id) === String(attendanceData.branch_id) && (s.type === shiftName || s.id === shiftName));
+          
+          const calc = calculateShiftTimes(
+              shiftData,
+              attendanceData.check_in_time,
+              attendanceData.check_out_time,
+              attendanceData.break_start_time,
+              attendanceData.break_duration || 0,
+              selectedDate,
+              attendanceData.status === "on_break" ? attendanceData.break_start_time : null
+          );
+
+          const totalWorkingHours = calc.workingHours;
+          const totalBreakMinutes = calc.breakTime;
 
           const recordBranchId = attendanceData.branch_id ? String(attendanceData.branch_id) : ""
           const branchObj = branches.find((b) => String(b.id) === recordBranchId)
@@ -827,11 +898,20 @@ export function AttendanceSystem() {
         const now = new Date()
         const checkOutTime = format(now, "HH:mm:ss") // Format as time only
         
-        // Parse check-in time properly
-        const checkInTime = existingRecord.checkIn ? new Date(`${selectedDate}T${existingRecord.checkIn}`) : new Date()
-        const workDuration = (now.getTime() - checkInTime.getTime()) / (1000 * 60 * 60)
-        const breakDuration = existingRecord.totalBreakTime || 0
-        const totalHours = Math.max(0, workDuration - breakDuration / 60)
+        const shiftName = existingRecord.shift || "Unknown"
+        const shiftData = allBranchShifts.find(s => String(s.branch_id) === String(existingRecord.branchId) && (s.type === shiftName || s.id === shiftName));
+        
+        const calc = calculateShiftTimes(
+            shiftData,
+            existingRecord.checkIn || null,
+            checkOutTime,
+            existingRecord.breakStart || null,
+            existingRecord.totalBreakTime || 0,
+            selectedDate,
+            existingRecord.status === "on-break" ? (existingRecord.breakStart || null) : null
+        );
+
+        const totalHours = calc.workingHours;
 
         const { error } = await supabase
           .from("attendance")
@@ -1117,50 +1197,48 @@ export function AttendanceSystem() {
 
   const getLiveShiftTimes = (shift: any, dateStr: string) => {
     let totalWorkingHours = shift.totalWorkingHours;
-    let totalBreakTime = shift.totalBreakTime; // in minutes
+    let totalBreakTime = shift.totalBreakTime;
+    let isAutoBreak = false;
 
-    if (shift.status === "present" && shift.checkIn) {
-      const checkIn = new Date(`${dateStr}T${shift.checkIn}`)
-      const now = new Date()
-      const workMinutes = (now.getTime() - checkIn.getTime()) / (1000 * 60)
-      const breakMinutes = shift.totalBreakTime || 0
-      totalWorkingHours = Math.max(0, (workMinutes - breakMinutes) / 60)
-    } else if (shift.status === "on-break" && shift.checkIn) {
-      const checkIn = new Date(`${dateStr}T${shift.checkIn}`)
-      let breakMinutes = shift.totalBreakTime || 0;
-      if (shift.breakStart) {
-        const breakStart = new Date(`${dateStr}T${shift.breakStart}`)
-        const now = new Date()
-        breakMinutes = (now.getTime() - breakStart.getTime()) / (1000 * 60)
-      }
-      totalBreakTime = breakMinutes;
-      
-      if (shift.breakStart) {
-        const breakStart = new Date(`${dateStr}T${shift.breakStart}`)
-        const workMinutesBeforeBreak = (breakStart.getTime() - checkIn.getTime()) / (1000 * 60)
-        totalWorkingHours = Math.max(0, workMinutesBeforeBreak / 60)
-      }
+    if (shift.status === "present" || shift.status === "on-break") {
+      const shiftData = allBranchShifts.find(s => s.branch_id === shift.branchId && (s.type === shift.shift || s.id === shift.shift));
+      const calc = calculateShiftTimes(
+        shiftData,
+        shift.checkIn,
+        shift.checkOut,
+        shift.breakStart,
+        shift.status === "present" ? shift.totalBreakTime : (shift.totalBreakTime - ((new Date().getTime() - new Date(`${dateStr}T${shift.breakStart}`).getTime()) / (1000 * 60) > 0 ? (new Date().getTime() - new Date(`${dateStr}T${shift.breakStart}`).getTime()) / (1000 * 60) : 0)),
+        dateStr,
+        shift.status === "on-break" ? shift.breakStart : null
+      );
+      totalWorkingHours = calc.workingHours;
+      totalBreakTime = calc.breakTime;
+      isAutoBreak = calc.isAutoBreak;
     }
 
     return {
       workingHours: totalWorkingHours,
-      breakTime: totalBreakTime
+      breakTime: totalBreakTime,
+      isAutoBreak
     }
   }
 
   const getLiveSummaryTimes = (summary: DailyAttendanceSummary) => {
     let totalDailyHours = 0;
     let totalDailyBreaks = 0;
+    let isAutoBreak = false;
 
     summary.shifts.forEach((shift) => {
-      const { workingHours, breakTime } = getLiveShiftTimes(shift, summary.date);
-      totalDailyHours += workingHours;
-      totalDailyBreaks += breakTime;
+      const liveTimes = getLiveShiftTimes(shift, summary.date);
+      totalDailyHours += liveTimes.workingHours;
+      totalDailyBreaks += liveTimes.breakTime;
+      if (liveTimes.isAutoBreak) isAutoBreak = true;
     });
 
     return {
       totalDailyHours,
-      totalDailyBreaks
+      totalDailyBreaks,
+      isAutoBreak
     };
   }
 
@@ -1396,11 +1474,11 @@ export function AttendanceSystem() {
                           </Button>
                         )}
 
-                        {summary.currentStatus === "present" && (
+                        {summary.currentStatus === "present" && !liveTimes.isAutoBreak && (
                           <>
                             <Button
                               onClick={() => handleBreakStart(employee)}
-                              disabled={isProcessing}
+                              disabled={isProcessing || dailySummaries.filter(s => s.employeeId !== employee.id && s.currentStatus === 'present' && s.shifts[s.shifts.length-1]?.branchId === summary.shifts[summary.shifts.length-1]?.branchId).length === 0}
                               variant="outline"
                               className="border-orange-300 text-orange-700 hover:bg-orange-50 font-medium px-3 py-2 text-xs sm:text-sm rounded-lg"
                               size="sm"
@@ -1408,6 +1486,24 @@ export function AttendanceSystem() {
                               <Coffee className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                               Istirahat
                             </Button>
+                            <Button
+                              onClick={() => openCheckOutCamera(employee)}
+                              disabled={isProcessing}
+                              className="bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-medium px-3 py-2 text-xs sm:text-sm rounded-lg"
+                              size="sm"
+                            >
+                              <LogOut className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                              Check Out
+                            </Button>
+                          </>
+                        )}
+
+                        {summary.currentStatus === "present" && liveTimes.isAutoBreak && (
+                          <>
+                            <div className="bg-orange-50 text-orange-600 font-medium px-3 py-2 text-xs sm:text-sm rounded-lg flex items-center border border-orange-200">
+                               <Coffee className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                               Waktunya Istirahat
+                            </div>
                             <Button
                               onClick={() => openCheckOutCamera(employee)}
                               disabled={isProcessing}
