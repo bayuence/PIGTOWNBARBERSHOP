@@ -40,6 +40,7 @@ import CurrencyInput from "react-currency-input-field"
 interface BonusPenaltyTransaction {
   id: string
   user_id: string
+  user_name?: string
   transaction_id?: string
   amount: number // Changed from points_earned to amount
   category: string // Changed from points_type to category
@@ -78,6 +79,8 @@ export default function PointsManagement() {
     custom_amount: "",
     description: "",
   })
+  const [activeTab, setActiveTab] = useState("overview")
+  const [selectedUserId, setSelectedUserId] = useState("all")
 
   useEffect(() => {
     // Scroll to top when component mounts
@@ -105,7 +108,8 @@ export default function PointsManagement() {
         ...user,
         total_bonus: 0,
         total_penalty: 0,
-        total_points: 0
+        total_points: 0,
+        net_amount: 0
       }))
       
       setUsers(usersWithTotals || []);
@@ -118,18 +122,32 @@ export default function PointsManagement() {
 
       if (transactionsError) throw transactionsError;
 
-      const mappedTransactions = (transactionsData || []).map((t) => ({
-        id: t.id,
-        user_id: t.user_id,
-        transaction_id: t.transaction_id,
-        amount: t.points_earned,
-        category: t.points_type,
-        description: t.description,
-        status: "approved" as const,
-        created_at: t.created_at,
-        user_name: t.user_name, // Use snapshot column
-      }));
+      const mappedTransactions = (transactionsData || []).map((t) => {
+        const u = usersWithTotals.find((user) => String(user.id) === String(t.user_id));
+        
+        if (u) {
+          if (t.points_earned > 0) {
+            u.total_bonus += t.points_earned;
+          } else if (t.points_earned < 0) {
+            u.total_penalty += Math.abs(t.points_earned);
+          }
+          u.net_amount = u.total_bonus - u.total_penalty;
+        }
 
+        return {
+          id: t.id,
+          user_id: t.user_id,
+          transaction_id: t.transaction_id,
+          amount: t.points_earned,
+          category: t.points_type,
+          description: t.description,
+          status: "approved" as const,
+          created_at: t.created_at,
+          user_name: u ? u.name : "-", 
+        };
+      });
+
+      setUsers([...usersWithTotals]);
       setTransactions(mappedTransactions);
     } catch (error) {
       let errorMessage = "Gagal memuat data. Terjadi kesalahan yang tidak diketahui.";
@@ -177,8 +195,18 @@ export default function PointsManagement() {
       return; // Hentikan fungsi jika kategori kosong
     }
 
+    let amount = Math.abs(Number(formData.custom_amount) || 0) // Ambil nilai absolut (selalu positif)
+    
+    if (amount <= 0) {
+      toast({
+        title: "Jumlah Tidak Valid",
+        description: "Jumlah bonus/penalty harus lebih dari Rp 0.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
-      let amount = Math.abs(Number(formData.custom_amount) || 0) // Ambil nilai absolut (selalu positif)
 
       if (formData.category === "penalty") {
         amount = amount * -1 // Jika penalty, jadikan negatif
@@ -283,34 +311,35 @@ export default function PointsManagement() {
               <DialogTitle className="text-lg md:text-xl">{editingTransaction ? "Edit Bonus/Penalty" : "Tambah Bonus/Penalty"}</DialogTitle>
               <DialogDescription className="text-xs md:text-sm">Berikan bonus atau penalty yang akan mempengaruhi gaji karyawan</DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-3 md:space-y-4">
-              <div>
-                <Label htmlFor="user_id">Karyawan</Label>
+            <form onSubmit={handleSubmit} className="space-y-4 md:space-y-5">
+              <div className="space-y-1.5">
+                <Label htmlFor="user_id" className="text-sm font-semibold">Karyawan <span className="text-red-500">*</span></Label>
                 <Select
-                  value={formData.user_id}
+                  value={formData.user_id || undefined}
                   onValueChange={(value) => setFormData({ ...formData, user_id: value })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="user_id" className={`w-full ${!formData.user_id ? "border-red-300 focus:ring-red-500" : ""}`}>
                     <SelectValue placeholder="Pilih karyawan" />
                   </SelectTrigger>
                   <SelectContent>
                     {users.map((user) => (
-                      <SelectItem key={user.id} value={user.id}>
+                      <SelectItem key={user.id} value={String(user.id)}>
                         {user.name} (Net: Rp {(user.net_amount || 0).toLocaleString("id-ID")})
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {!formData.user_id && <p className="text-xs text-red-500 mt-1">Karyawan wajib dipilih.</p>}
               </div>
 
-              <div>
-                <Label htmlFor="category">Kategori</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="category" className="text-sm font-semibold">Kategori <span className="text-red-500">*</span></Label>
                 <Select
-                  value={formData.category}
+                  value={formData.category || undefined}
                   onValueChange={(value) => setFormData({ ...formData, category: value })}
                   required
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="category" className={`w-full ${!formData.category ? "border-red-300 focus:ring-red-500" : ""}`}>
                     <SelectValue placeholder="Pilih jenis transaksi" />
                   </SelectTrigger>
                   <SelectContent>
@@ -318,14 +347,15 @@ export default function PointsManagement() {
                     <SelectItem value="penalty">⚠️ Penalty</SelectItem>
                   </SelectContent>
                 </Select>
+                {!formData.category && <p className="text-xs text-red-500 mt-1">Kategori wajib dipilih.</p>}
               </div>
 
-              <div>
-                <Label htmlFor="custom_amount">Jumlah (Rp)</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="custom_amount" className="text-sm font-semibold">Jumlah (Rp) <span className="text-red-500">*</span></Label>
                 <CurrencyInput
                   id="custom_amount"
                   name="custom_amount"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className={`flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors ${!formData.custom_amount || Number(formData.custom_amount) <= 0 ? "border-red-300 focus-visible:ring-red-500" : "border-input focus-visible:ring-ring"}`}
                   placeholder="Masukkan jumlah, contoh: 50.000"
                   value={formData.custom_amount}
                   onValueChange={(value) => {
@@ -336,30 +366,43 @@ export default function PointsManagement() {
                   decimalSeparator=","
                   decimalsLimit={0}
                 />
+                {(!formData.custom_amount || Number(formData.custom_amount) <= 0) && (
+                  <p className="text-xs text-red-500 mt-1">Jumlah nominal harus lebih dari Rp 0.</p>
+                )}
               </div>
 
-              <div>
-                <Label htmlFor="description">Alasan Detail</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="description" className="text-sm font-semibold">Alasan Detail <span className="text-red-500">*</span></Label>
                 <Textarea
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   placeholder="Jelaskan alasan pemberian bonus/penalty secara detail"
+                  className={`resize-none h-24 ${!formData.description.trim() ? "border-red-300 focus-visible:ring-red-500" : ""}`}
                   required
                 />
+                {!formData.description.trim() && (
+                  <p className="text-xs text-red-500 mt-1">Alasan detail wajib diisi.</p>
+                )}
               </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+              <DialogFooter className="pt-4 border-t mt-4">
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="w-full sm:w-auto">
                   Batal
                 </Button>
-                <Button type="submit">{editingTransaction ? "Perbarui" : "Tambah"}</Button>
+                <Button 
+                  type="submit" 
+                  className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+                  disabled={!formData.user_id || !formData.category || Number(formData.custom_amount) <= 0 || !formData.description.trim()}
+                >
+                  {editingTransaction ? "Perbarui" : "Tambah Data"}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>
       </div>
 
-      <Tabs defaultValue="overview" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="transactions">Riwayat Transaksi</TabsTrigger>
@@ -423,9 +466,26 @@ export default function PointsManagement() {
 
         <TabsContent value="transactions" className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Riwayat Bonus & Penalty</CardTitle>
-              <CardDescription>Semua transaksi bonus dan penalty karyawan</CardDescription>
+            <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between space-y-2 sm:space-y-0 pb-4">
+              <div>
+                <CardTitle>Riwayat Bonus & Penalty</CardTitle>
+                <CardDescription>Semua transaksi bonus dan penalty karyawan</CardDescription>
+              </div>
+              <div className="w-full sm:w-[250px]">
+                <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Semua Karyawan" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Karyawan</SelectItem>
+                    {users.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent>
               <Table>
@@ -441,7 +501,9 @@ export default function PointsManagement() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {transactions.map((transaction) => (
+                  {transactions
+                    .filter(t => selectedUserId === "all" || String(t.user_id) === String(selectedUserId))
+                    .map((transaction) => (
                     <TableRow key={transaction.id}>
                       <TableCell>{new Date(transaction.created_at).toLocaleDateString("id-ID")}</TableCell>
                       <TableCell>
@@ -511,6 +573,7 @@ export default function PointsManagement() {
                     <TableHead>Total Penalty</TableHead>
                     <TableHead>Net Amount</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -549,6 +612,18 @@ export default function PointsManagement() {
                             <DollarSign className="w-3 h-3 mr-1" />
                             {(user.net_amount || 0) >= 0 ? "Bonus" : "Penalty"}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => {
+                              setSelectedUserId(String(user.id));
+                              setActiveTab("transactions");
+                            }}
+                          >
+                            Atur / Riwayat
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
