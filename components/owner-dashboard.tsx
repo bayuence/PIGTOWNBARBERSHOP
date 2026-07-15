@@ -47,6 +47,7 @@ import PointsManagement from "./points-management"
 import KasbonManagement from "./kasbon-management"
 import { KelolaPengeluaranCabang } from "./kelolapengeluarancabang"
 import { OverviewAndAnalytics } from "./overviewdananalytic"
+import SetoranManagement from "./setoran-management"
 
 // Komponen Utama
 export function OwnerDashboard() {
@@ -66,6 +67,7 @@ export function OwnerDashboard() {
     { value: "overview", label: "Overview", icon: BarChart3, shortLabel: "Home" },
     { value: "employees", label: "Karyawan", icon: Users, shortLabel: "Staff" },
     { value: "branches", label: "Cabang", icon: Target, shortLabel: "Branch" },
+    { value: "setoran", label: "Setoran", icon: DollarSign, shortLabel: "Deposit" },
     { value: "points", label: "Poin", icon: Award, shortLabel: "Point" },
     { value: "kasbon", label: "Kasbon", icon: DollarSign, shortLabel: "Loan" },
     { value: "pengeluaran", label: "Pengeluaran", icon: TrendingDown, shortLabel: "Expense" },
@@ -398,6 +400,15 @@ export function OwnerDashboard() {
                     <div className="absolute inset-0 bg-gradient-to-r from-orange-500/5 via-red-500/5 to-rose-500/5 rounded-2xl blur-xl"></div>
                     <div className="relative bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-white/20 dark:border-slate-700/30 p-6">
                       <BranchManagement />
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="setoran" className="mt-0">
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/5 via-teal-500/5 to-emerald-500/5 rounded-2xl blur-xl"></div>
+                    <div className="relative bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-white/20 dark:border-slate-700/30 p-6">
+                      <SetoranManagement />
                     </div>
                   </div>
                 </TabsContent>

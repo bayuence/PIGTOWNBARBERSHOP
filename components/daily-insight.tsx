@@ -35,6 +35,7 @@ import {
 } from "lucide-react"
 import { supabase, getBranches } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
+import imageCompression from 'browser-image-compression'
 
 // Helper function to format currency
 const formatRupiah = (value: number) => {
@@ -132,12 +133,19 @@ export function DailyInsight() {
 
   // Setor Kas states
   const [isSetorModalOpen, setIsSetorModalOpen] = useState(false)
-  const [setorAmount, setSetorAmount] = useState("")
+  const [setorDisplayValue, setSetorDisplayValue] = useState("") // formatted rupiah string untuk input
+  const [setorRawValue, setSetorRawValue] = useState(0) // angka asli untuk submit
+  const [setorBranchId, setSetorBranchId] = useState("") // cabang yang menyetor
+  const [setorEmployeeId, setSetorEmployeeId] = useState("") // karyawan yang menyetor
   const [setorNote, setSetorNote] = useState("")
   const [setorProofFile, setSetorProofFile] = useState<File | null>(null)
   const [setorProofPreview, setSetorProofPreview] = useState<string | null>(null)
   const [isSubmittingSetor, setIsSubmittingSetor] = useState(false)
+  const [setorLoadingMessage, setSetorLoadingMessage] = useState("")
   const [depositList, setDepositList] = useState<any[]>([])
+  // Validation errors
+  const [setorErrors, setSetorErrors] = useState<{ amount?: string; proof?: string; branch?: string; employee?: string }>({})
+  const [setorTouched, setSetorTouched] = useState<{ amount?: boolean; proof?: boolean; branch?: boolean; employee?: boolean }>({})
 
   // Load user data & branches
   useEffect(() => {
@@ -198,6 +206,127 @@ export function DailyInsight() {
       setDepositList(data || [])
     } catch (err) {
       console.error("Error fetching deposits:", err)
+    }
+  }
+
+  // Handler input rupiah — format langsung saat mengetik
+  const handleSetorAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Ambil hanya digit
+    const digits = e.target.value.replace(/\D/g, "")
+    const raw = parseInt(digits || "0", 10)
+    setSetorRawValue(raw)
+    // Format dengan titik ribuan (tanpa Rp prefix, sudah ada di luar)
+    setSetorDisplayValue(raw > 0 ? raw.toLocaleString("id-ID") : "")
+    // Validate realtime
+    if (setorTouched.amount) {
+      if (raw <= 0) {
+        setSetorErrors(prev => ({ ...prev, amount: "Jumlah setoran harus lebih dari Rp 0" }))
+      } else if (raw < 1000) {
+        setSetorErrors(prev => ({ ...prev, amount: "Jumlah setoran minimal Rp 1.000" }))
+      } else {
+        setSetorErrors(prev => ({ ...prev, amount: undefined }))
+      }
+    }
+  }
+
+  const handleSetorAmountBlur = () => {
+    setSetorTouched(prev => ({ ...prev, amount: true }))
+    if (setorRawValue <= 0) {
+      setSetorErrors(prev => ({ ...prev, amount: "Jumlah setoran harus lebih dari Rp 0" }))
+    } else if (setorRawValue < 1000) {
+      setSetorErrors(prev => ({ ...prev, amount: "Jumlah setoran minimal Rp 1.000" }))
+    } else {
+      setSetorErrors(prev => ({ ...prev, amount: undefined }))
+    }
+  }
+
+  const handleSubmitSetor = async () => {
+    // Paksa semua field jadi touched
+    setSetorTouched({ amount: true, proof: true, branch: true, employee: true })
+    const newErrors: { amount?: string; proof?: string; branch?: string; employee?: string } = {}
+    if (setorRawValue <= 0) newErrors.amount = "Jumlah setoran harus lebih dari Rp 0"
+    if (setorRawValue > 0 && setorRawValue < 1000) newErrors.amount = "Jumlah setoran minimal Rp 1.000"
+    if (!setorBranchId) newErrors.branch = "Pilih cabang yang menyetor"
+    if (!setorEmployeeId) newErrors.employee = "Pilih karyawan yang menyetor"
+    if (!setorProofFile) newErrors.proof = "Bukti foto setoran wajib dilampirkan"
+    if (Object.keys(newErrors).length > 0) {
+      setSetorErrors(newErrors)
+      return
+    }
+    if (!currentUser) return
+    if (!setorProofFile) return // TypeScript narrowing guard
+
+    // Resolve employee name
+    const submitterEmployee = usersList.find((u: any) => String(u.id) === String(setorEmployeeId))
+    const submitterName = submitterEmployee?.name || currentUser.name
+
+    setIsSubmittingSetor(true)
+    setSetorLoadingMessage("Mengkompres gambar...")
+    try {
+      // 0. Kompres gambar (maksimal ~100kb, 1024px)
+      const options = {
+        maxSizeMB: 0.1, // 100 KB
+        maxWidthOrHeight: 1024,
+        useWebWorker: true,
+      }
+      
+      let compressedFile: File = setorProofFile
+      if (setorProofFile.type !== 'image/svg+xml') {
+        compressedFile = await imageCompression(setorProofFile, options)
+      }
+      
+      setSetorLoadingMessage("Mengunggah bukti...")
+
+      // 1. Upload bukti foto ke bucket 'attendance-photos' subfolder cash-deposits/
+      const fileExt = compressedFile.name.split('.').pop() || 'jpg'
+      const fileName = `cash-deposits/setor_${Date.now()}_${Math.random().toString(36).slice(2)}.${fileExt}`
+      const { error: uploadError } = await supabase.storage
+        .from('attendance-photos')
+        .upload(fileName, compressedFile, { upsert: false })
+
+      if (uploadError) throw uploadError
+
+      const { data: urlData } = supabase.storage.from('attendance-photos').getPublicUrl(fileName)
+      const proofUrl = urlData.publicUrl
+
+      const now = new Date()
+      const localISO = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, -1)
+
+      // 2. Simpan ke tabel cash_deposits
+      const { error: insertError } = await supabase.from('cash_deposits').insert({
+        branch_id: setorBranchId,
+        amount: setorRawValue,
+        deposit_date: localISO,
+        submitted_by: setorEmployeeId,
+        submitter_name: submitterName,
+        note: setorNote || null,
+        proof_url: proofUrl,
+      })
+
+      if (insertError) throw insertError
+
+      // 4. Reset form & tutup modal
+      setSetorDisplayValue('')
+      setSetorRawValue(0)
+      setSetorBranchId('')
+      setSetorEmployeeId('')
+      setSetorNote('')
+      setSetorProofFile(null)
+      setSetorProofPreview(null)
+      setSetorErrors({})
+      setSetorTouched({})
+      setIsSetorModalOpen(false)
+      setSetorLoadingMessage("")
+
+      // 5. Refresh daftar deposit
+      await fetchDeposits(selectedBranch)
+
+      alert(`✅ Setoran ${formatRupiah(setorRawValue)} berhasil dicatat!`)
+    } catch (err: any) {
+      console.error('Error submitting setor:', err)
+      alert(`Gagal menyimpan setoran: ${err?.message || 'Terjadi kesalahan'}`)
+    } finally {
+      setIsSubmittingSetor(false)
     }
   }
 
@@ -344,6 +473,13 @@ export function DailyInsight() {
     const totalExpenses = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
     const totalKasbon = kasbonList.reduce((sum, k) => sum + (Number(k.amount) || 0), 0)
     const netProfit = totalRevenue - totalExpenses - totalKasbon
+    // Hanya hitung setoran yang sudah disetujui (approved) oleh Owner
+    const totalDeposits = depositList
+      .filter((d) => d.status === "approved")
+      .reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
+
+    // Uang di Laci = Pendapatan Tunai - Pengeluaran (tunai) - Kasbon - Total Setoran Diterima
+    const cashInDrawer = Math.max(0, cashTotal - totalExpenses - totalKasbon - totalDeposits)
 
     return {
       totalRevenue,
@@ -352,9 +488,11 @@ export function DailyInsight() {
       transferTotal,
       totalExpenses,
       totalKasbon,
-      netProfit
+      netProfit,
+      totalDeposits,
+      cashInDrawer
     }
-  }, [transactions, expenses, kasbonList])
+  }, [transactions, expenses, kasbonList, depositList])
 
   // Barber/Employee performance breakdown
   const employeePerformance = useMemo(() => {
@@ -612,7 +750,7 @@ export function DailyInsight() {
       </div>
 
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         {/* Total Revenue */}
         <Card className="relative overflow-hidden group border-slate-200/50 dark:border-slate-800/80 shadow-md hover:shadow-lg transition-all duration-300 bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/20 dark:to-slate-900">
           <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform duration-300">
@@ -711,6 +849,70 @@ export function DailyInsight() {
             <span className="text-[11px] leading-tight text-slate-600 dark:text-slate-400">
               Total komisi yang dihasilkan oleh tim barber pada periode ini.
             </span>
+          </CardContent>
+        </Card>
+
+        {/* Total Setoran */}
+        <Card className="relative overflow-hidden group border-slate-200/50 dark:border-slate-800/80 shadow-md hover:shadow-lg transition-all duration-300 bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/20 dark:to-slate-900">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform duration-300">
+            <Send className="h-16 w-16 text-emerald-600" />
+          </div>
+          <CardHeader className="pb-2">
+            <CardDescription className="text-emerald-700 dark:text-emerald-400 font-bold text-xs uppercase tracking-wider flex items-center gap-1">
+              <Send className="h-3.5 w-3.5" />
+              Total Setoran Diterima
+            </CardDescription>
+            <CardTitle className="text-2xl lg:text-3xl font-extrabold text-slate-800 dark:text-white">
+              {formatRupiah(metrics.totalDeposits)}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-slate-500 flex flex-col justify-center min-h-[50px]">
+            {depositList.filter((d) => d.status === "approved").length === 0 ? (
+              <span className="italic">Belum ada setoran diterima hari ini</span>
+            ) : (
+              <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                {depositList.filter((d) => d.status === "approved").length}x setoran diterima
+              </span>
+            )}
+            {depositList.filter((d) => d.status === "pending").length > 0 && (
+              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-1">
+                ({depositList.filter((d) => d.status === "pending").length}x setoran pending)
+              </span>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Uang di Laci */}
+        <Card className="relative overflow-hidden group border-slate-200/50 dark:border-slate-800/80 shadow-md hover:shadow-lg transition-all duration-300 bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/20 dark:to-slate-900">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform duration-300">
+            <Banknote className="h-16 w-16 text-amber-600" />
+          </div>
+          <CardHeader className="pb-2">
+            <CardDescription className="text-amber-700 dark:text-amber-400 font-bold text-xs uppercase tracking-wider flex items-center gap-1">
+              <Banknote className="h-3.5 w-3.5" />
+              Estimasi Uang di Laci
+            </CardDescription>
+            <CardTitle className="text-2xl lg:text-3xl font-extrabold text-slate-800 dark:text-white">
+              {formatRupiah(metrics.cashInDrawer)}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-slate-500 flex flex-col gap-1">
+            <div className="flex justify-between">
+              <span>Tunai Masuk</span>
+              <span className="font-semibold text-slate-700 dark:text-slate-300">{formatRupiah(metrics.cashTotal)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>- Pengeluaran</span>
+              <span className="font-semibold text-red-600">-{formatRupiah(metrics.totalExpenses)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>- Kasbon</span>
+              <span className="font-semibold text-red-600">-{formatRupiah(metrics.totalKasbon)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>- Disetor</span>
+              <span className="font-semibold text-emerald-600">-{formatRupiah(metrics.totalDeposits)}</span>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -1152,6 +1354,292 @@ export function DailyInsight() {
             >
               Tutup
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isSetorModalOpen} onOpenChange={(open) => {
+        if (!open) {
+          setSetorDisplayValue('')
+          setSetorRawValue(0)
+          setSetorBranchId('')
+          setSetorEmployeeId('')
+          setSetorNote('')
+          setSetorProofFile(null)
+          setSetorProofPreview(null)
+          setSetorErrors({})
+          setSetorTouched({})
+        }
+        setIsSetorModalOpen(open)
+      }}>
+        <DialogContent className="w-[90vw] max-w-md rounded-2xl p-0 overflow-hidden border-0 shadow-2xl">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-emerald-600 to-teal-500 px-6 py-5">
+            <DialogHeader>
+              <DialogTitle className="text-white text-xl font-black flex items-center gap-2">
+                <Send className="w-5 h-5" />
+                Setor Kas ke Owner
+              </DialogTitle>
+              <DialogDescription className="text-emerald-100 text-sm mt-1">
+                Input jumlah uang tunai yang kamu setor dan lampirkan bukti fotonya.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+
+          <div className="p-6 space-y-5 bg-white dark:bg-slate-900">
+            {/* Cabang Setoran */}
+            <div className="space-y-2">
+              <Label className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <MapPin className="w-4 h-4 text-emerald-500" />
+                Cabang Toko <span className="text-red-500">*</span>
+              </Label>
+              <Select
+                value={setorBranchId}
+                onValueChange={(value) => {
+                  setSetorBranchId(value)
+                  setSetorTouched(prev => ({ ...prev, branch: true }))
+                  if (value) setSetorErrors(prev => ({ ...prev, branch: undefined }))
+                }}
+              >
+                <SelectTrigger className={`bg-slate-50 dark:bg-slate-800 border-2 rounded-xl focus:border-emerald-500 ${
+                  setorErrors.branch ? "border-red-400 dark:border-red-500" : "border-slate-200 dark:border-slate-700"
+                }`}>
+                  <SelectValue placeholder="Pilih Cabang Setoran" />
+                </SelectTrigger>
+                <SelectContent>
+                  {branches.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {setorErrors.branch && (
+                <p className="text-red-500 text-xs font-medium flex items-center gap-1">
+                  <span>⚠</span> {setorErrors.branch}
+                </p>
+              )}
+            </div>
+
+            {/* Karyawan Penyetor */}
+            <div className="space-y-2">
+              <Label className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-emerald-500" />
+                Nama Karyawan Penyetor <span className="text-red-500">*</span>
+              </Label>
+              <Select
+                value={setorEmployeeId}
+                onValueChange={(value) => {
+                  setSetorEmployeeId(value)
+                  setSetorTouched(prev => ({ ...prev, employee: true }))
+                  if (value) setSetorErrors(prev => ({ ...prev, employee: undefined }))
+                }}
+              >
+                <SelectTrigger className={`bg-slate-50 dark:bg-slate-800 border-2 rounded-xl focus:border-emerald-500 ${
+                  setorErrors.employee ? "border-red-400 dark:border-red-500" : "border-slate-200 dark:border-slate-700"
+                }`}>
+                  <SelectValue placeholder="Pilih Karyawan" />
+                </SelectTrigger>
+                <SelectContent>
+                  {usersList.map((u) => (
+                    <SelectItem key={u.id} value={String(u.id)}>
+                      {u.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {setorErrors.employee && (
+                <p className="text-red-500 text-xs font-medium flex items-center gap-1">
+                  <span>⚠</span> {setorErrors.employee}
+                </p>
+              )}
+            </div>
+
+            {/* Jumlah Setoran */}
+            <div className="space-y-2">
+              <Label className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <Banknote className="w-4 h-4 text-emerald-500" />
+                Jumlah Setoran <span className="text-red-500">*</span>
+              </Label>
+              <div className="relative">
+                <span className={`absolute left-3 top-1/2 -translate-y-1/2 font-bold text-sm pointer-events-none transition-colors ${
+                  setorErrors.amount ? "text-red-400" : setorRawValue > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"
+                }`}>Rp</span>
+                <Input
+                  id="setor-amount"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={setorDisplayValue}
+                  onChange={handleSetorAmountChange}
+                  onBlur={handleSetorAmountBlur}
+                  className={`pl-10 text-lg font-bold border-2 rounded-xl bg-slate-50 dark:bg-slate-800 transition-colors ${
+                    setorErrors.amount
+                      ? "border-red-400 dark:border-red-500 focus:border-red-500 text-red-600 dark:text-red-400"
+                      : setorRawValue > 0
+                      ? "border-emerald-400 dark:border-emerald-500 focus:border-emerald-500 text-emerald-700 dark:text-emerald-300"
+                      : "border-slate-200 dark:border-slate-700 focus:border-emerald-500 dark:focus:border-emerald-400"
+                  }`}
+                />
+              </div>
+              {setorErrors.amount && (
+                <p className="text-red-500 text-xs font-medium flex items-center gap-1">
+                  <span>⚠</span> {setorErrors.amount}
+                </p>
+              )}
+            </div>
+
+            {/* Catatan (opsional) */}
+            <div className="space-y-2">
+              <Label className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                Catatan <span className="text-slate-400 font-normal">(opsional)</span>
+              </Label>
+              <Input
+                id="setor-note"
+                type="text"
+                placeholder="mis. Setoran shift sore..."
+                value={setorNote}
+                onChange={(e) => setSetorNote(e.target.value)}
+                className="border-2 border-slate-200 dark:border-slate-700 rounded-xl focus:border-emerald-500 bg-slate-50 dark:bg-slate-800"
+              />
+            </div>
+
+            {/* Upload Bukti Foto */}
+            <div className="space-y-2">
+              <Label className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <ImageIcon className="w-4 h-4 text-emerald-500" />
+                Bukti Setoran (Foto) <span className="text-red-500">*</span>
+              </Label>
+              {!setorProofPreview ? (
+                <label
+                  htmlFor="setor-proof-input"
+                  className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl p-8 cursor-pointer transition-all group ${
+                    setorErrors.proof
+                      ? "border-red-400 dark:border-red-500 bg-red-50/50 dark:bg-red-950/10"
+                      : "border-slate-300 dark:border-slate-600 hover:border-emerald-400 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/10"
+                  }`}
+                >
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform ${
+                    setorErrors.proof ? "bg-red-100 dark:bg-red-900/30" : "bg-emerald-100 dark:bg-emerald-900/30"
+                  }`}>
+                    <ImageIcon className={`w-6 h-6 ${setorErrors.proof ? "text-red-500" : "text-emerald-600"}`} />
+                  </div>
+                  <div className="text-center">
+                    <p className={`text-sm font-semibold ${setorErrors.proof ? "text-red-600 dark:text-red-400" : "text-slate-700 dark:text-slate-300"}`}>
+                      Klik untuk upload foto
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5">JPG, PNG, WebP (maks. 5MB)</p>
+                  </div>
+                  <input
+                    id="setor-proof-input"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        // Validasi ukuran file max 5MB
+                        if (file.size > 5 * 1024 * 1024) {
+                          setSetorErrors(prev => ({ ...prev, proof: "Ukuran foto maksimal 5MB" }))
+                          return
+                        }
+                        setSetorProofFile(file)
+                        setSetorErrors(prev => ({ ...prev, proof: undefined }))
+                        setSetorTouched(prev => ({ ...prev, proof: true }))
+                        const reader = new FileReader()
+                        reader.onload = (ev) => setSetorProofPreview(ev.target?.result as string)
+                        reader.readAsDataURL(file)
+                      }
+                    }}
+                  />
+                </label>
+              ) : (
+                <div className="relative rounded-xl overflow-hidden border-2 border-emerald-300 dark:border-emerald-700">
+                  <img src={setorProofPreview} alt="Bukti Setoran" className="w-full h-48 object-cover" />
+                  <div className="absolute top-2 right-2">
+                    <button
+                      onClick={() => {
+                        setSetorProofFile(null)
+                        setSetorProofPreview(null)
+                        if (setorTouched.proof) {
+                          setSetorErrors(prev => ({ ...prev, proof: "Bukti foto setoran wajib dilampirkan" }))
+                        }
+                      }}
+                      className="w-8 h-8 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-lg transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="absolute bottom-2 left-2">
+                    <span className="bg-emerald-600/90 text-white text-xs font-bold px-2 py-1 rounded-lg flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Foto terlampir
+                    </span>
+                  </div>
+                </div>
+              )}
+              {setorErrors.proof && (
+                <p className="text-red-500 text-xs font-medium flex items-center gap-1">
+                  <span>⚠</span> {setorErrors.proof}
+                </p>
+              )}
+            </div>
+
+            {/* Riwayat Setoran Hari Ini */}
+            {depositList.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Riwayat Setoran Hari Ini</p>
+                <div className="space-y-1.5 max-h-28 overflow-y-auto">
+                  {depositList.map((d: any) => (
+                    <div key={d.id} className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-950/20 rounded-lg px-3 py-2">
+                      <div>
+                        <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400">{formatRupiah(d.amount)}</p>
+                        <p className="text-[10px] text-slate-400">
+                          {d.submitter_name} · {(() => {
+                            const date = new Date(d.deposit_date);
+                            // Handling data lama (UTC) vs data baru (LocalISO)
+                            if (typeof d.deposit_date === "string" && !d.deposit_date.includes("Z") && !d.deposit_date.includes("+") && d.deposit_date.includes("T")) {
+                              const testDate = new Date(d.deposit_date + "Z");
+                              if (!isNaN(testDate.getTime()) && testDate.getTime() < 1784139000000) {
+                                return testDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                              }
+                            }
+                            return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                          })()}
+                        </p>
+                      </div>
+                      {d.proof_url && (
+                        <a href={d.proof_url} target="_blank" rel="noreferrer">
+                          <img src={d.proof_url} alt="bukti" className="w-10 h-10 object-cover rounded-lg border border-emerald-200" />
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1 rounded-xl border-2 border-slate-200 dark:border-slate-700"
+                onClick={() => setIsSetorModalOpen(false)}
+                disabled={isSubmittingSetor}
+              >
+                Batal
+              </Button>
+              <Button
+                className="flex-1 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white rounded-xl font-bold shadow-lg gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleSubmitSetor}
+                disabled={isSubmittingSetor || setorRawValue <= 0 || !setorProofFile}
+              >
+                {isSubmittingSetor ? (
+                  <><RefreshCw className="w-4 h-4 animate-spin" /> {setorLoadingMessage || "Menyimpan..."}</>
+                ) : (
+                  <><Send className="w-4 h-4" /> Setor Sekarang</>
+                )}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
