@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
 import { useState, useEffect } from "react"
@@ -1201,65 +1202,84 @@ export default function BranchManagement() {
               <DialogDescription className="text-xs md:text-sm">Isi informasi cabang baru yang akan ditambahkan</DialogDescription>
             </DialogHeader>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nama Cabang</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="name" className="text-sm font-semibold">Nama Cabang <span className="text-red-500">*</span></Label>
                 <Input
                   id="name"
                   value={newBranch.name || ""}
                   onChange={(e) => setNewBranch({ ...newBranch, name: e.target.value })}
                   placeholder="Contoh: Cabang Menteng"
+                  className={!newBranch.name?.trim() ? "border-red-300 focus-visible:ring-red-500" : ""}
                 />
+                {!newBranch.name?.trim() && <p className="text-xs text-red-500 mt-1">Nama cabang wajib diisi.</p>}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="manager">Manager</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="manager" className="text-sm font-semibold">Manager <span className="text-red-500">*</span></Label>
                 <Input
                   id="manager"
                   value={newBranch.manager || ""}
                   onChange={(e) => setNewBranch({ ...newBranch, manager: e.target.value })}
                   placeholder="Nama manager cabang"
+                  className={!newBranch.manager?.trim() ? "border-red-300 focus-visible:ring-red-500" : ""}
                 />
+                {!newBranch.manager?.trim() && <p className="text-xs text-red-500 mt-1">Manager wajib diisi.</p>}
               </div>
-              <div className="col-span-2 space-y-2">
-                <Label htmlFor="address">Alamat</Label>
+              <div className="col-span-1 sm:col-span-2 space-y-1.5">
+                <Label htmlFor="address" className="text-sm font-semibold">Alamat <span className="text-red-500">*</span></Label>
                 <Textarea
                   id="address"
                   value={newBranch.address || ""}
                   onChange={(e) => setNewBranch({ ...newBranch, address: e.target.value })}
                   placeholder="Alamat lengkap cabang"
+                  className={`resize-none h-20 ${!newBranch.address?.trim() ? "border-red-300 focus-visible:ring-red-500" : ""}`}
                 />
+                {!newBranch.address?.trim() && <p className="text-xs text-red-500 mt-1">Alamat lengkap wajib diisi.</p>}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">Nomor Telepon</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="phone" className="text-sm font-semibold">Nomor Telepon <span className="text-red-500">*</span></Label>
                 <Input
                   id="phone"
                   value={newBranch.phone || ""}
                   onChange={(e) => setNewBranch({ ...newBranch, phone: e.target.value })}
                   placeholder="+62 21 xxxxxxx"
+                  className={!newBranch.phone?.trim() ? "border-red-300 focus-visible:ring-red-500" : ""}
                 />
+                {!newBranch.phone?.trim() && <p className="text-xs text-red-500 mt-1">Nomor telepon wajib diisi.</p>}
               </div>
-              <div className="space-y-2">
-                <Label>Jam Operasional</Label>
-                <div className="flex gap-2">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold">Jam Operasional <span className="text-red-500">*</span></Label>
+                <div className="flex gap-2 items-center">
                   <Input
                     type="time"
                     value={newBranch.openTime || "09:00"}
                     onChange={(e) => setNewBranch({ ...newBranch, openTime: e.target.value })}
+                    className={!newBranch.openTime ? "border-red-300 focus-visible:ring-red-500" : ""}
                   />
-                  <span className="flex items-center">-</span>
+                  <span className="text-muted-foreground">-</span>
                   <Input
                     type="time"
                     value={newBranch.closeTime || "21:00"}
                     onChange={(e) => setNewBranch({ ...newBranch, closeTime: e.target.value })}
+                    className={!newBranch.closeTime ? "border-red-300 focus-visible:ring-red-500" : ""}
                   />
                 </div>
+                {(!newBranch.openTime || !newBranch.closeTime) && (
+                  <p className="text-xs text-red-500 mt-1">Jam operasional tidak boleh kosong.</p>
+                )}
               </div>
             </div>
-            <div className="flex justify-end gap-2 mt-6">
-              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+            <DialogFooter className="pt-4 border-t mt-4 flex sm:justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)} className="w-full sm:w-auto">
                 Batal
               </Button>
-              <Button onClick={handleAddBranch}>Tambah Cabang</Button>
-            </div>
+              <Button 
+                onClick={handleAddBranch}
+                disabled={!newBranch.name?.trim() || !newBranch.manager?.trim() || !newBranch.address?.trim() || !newBranch.phone?.trim() || !newBranch.openTime || !newBranch.closeTime}
+                className="w-full sm:w-auto bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white"
+              >
+                Tambah Cabang
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

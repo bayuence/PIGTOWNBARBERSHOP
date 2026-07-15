@@ -224,10 +224,16 @@ export default function KasbonManagement() {
       // Refresh tanpa show loading
       await fetchData(false);
     } catch (error) {
-      console.error("Error processing payment:", error);
+      let errorMessage = "Gagal memproses pembayaran.";
+      if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage = String((error as any).message);
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      console.error("Detail Error Sebenarnya:", JSON.stringify(error, null, 2));
       toast({
         title: "Error",
-        description: "Gagal memproses pembayaran",
+        description: errorMessage,
         variant: "destructive",
       });
     }

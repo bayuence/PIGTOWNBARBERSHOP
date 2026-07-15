@@ -50,6 +50,8 @@ interface AttendanceRecord {
   status: "present" | "absent" | "late" | "on-break" | "checked-out"
   photo?: string
   location: string
+  shiftDisplayName?: string
+  manualBreakDuration?: number
 }
 
 interface DailyAttendanceSummary {
@@ -187,11 +189,6 @@ const calculateShiftTimes = (shiftData: BranchShift | undefined, checkInTime: st
          shiftEnd.setDate(shiftEnd.getDate() + 1);
      }
      hasShiftEnd = true;
-  }
-
-  // Cap effective end at shift end
-  if (hasShiftEnd && effectiveEnd > shiftEnd) {
-      effectiveEnd = shiftEnd;
   }
 
   let workMinutes = (effectiveEnd.getTime() - checkIn.getTime()) / (1000 * 60);
@@ -514,11 +511,13 @@ export function AttendanceSystem() {
             branchId: attendanceData.branch_id,
             date: selectedDate,
             shift: shiftName,
+            shiftDisplayName: shiftData ? shiftData.name : shiftName,
             checkIn: attendanceData.check_in_time,
             checkOut: attendanceData.check_out_time,
             breakStart: attendanceData.break_start_time,
             breakEnd: attendanceData.break_end_time,
             totalBreakTime: totalBreakMinutes,
+            manualBreakDuration: attendanceData.break_duration || 0,
             totalWorkingHours: totalWorkingHours,
             status,
             photo: attendanceData.check_in_photo || attendanceData.check_out_photo,
@@ -980,7 +979,7 @@ export function AttendanceSystem() {
         if (activeShift.breakStart) {
           const breakStart = new Date(`${selectedDate}T${activeShift.breakStart}`)
           const breakDuration = Math.round((now.getTime() - breakStart.getTime()) / (1000 * 60))
-          updates.break_duration = (activeShift.totalBreakTime || 0) + breakDuration
+          updates.break_duration = (activeShift.manualBreakDuration || 0) + breakDuration
         }
       }
 
@@ -1207,7 +1206,7 @@ export function AttendanceSystem() {
         shift.checkIn,
         shift.checkOut,
         shift.breakStart,
-        shift.status === "present" ? shift.totalBreakTime : (shift.totalBreakTime - ((new Date().getTime() - new Date(`${dateStr}T${shift.breakStart}`).getTime()) / (1000 * 60) > 0 ? (new Date().getTime() - new Date(`${dateStr}T${shift.breakStart}`).getTime()) / (1000 * 60) : 0)),
+        shift.manualBreakDuration || 0,
         dateStr,
         shift.status === "on-break" ? shift.breakStart : null
       );
@@ -1436,7 +1435,7 @@ export function AttendanceSystem() {
                                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                                     <div className="flex-1">
                                       <span className="font-medium">
-                                        Shift {index + 1} - {shift.branch}
+                                        {shift.shiftDisplayName || `Shift ${index + 1}`} - {shift.branch}
                                       </span>
                                       <div className="text-gray-600 mt-1">
                                         {shift.checkIn && `Masuk: ${shift.checkIn}`}
