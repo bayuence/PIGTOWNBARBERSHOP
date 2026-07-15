@@ -1412,10 +1412,32 @@ export function AttendanceSystem() {
   const filteredShifts =
     selectedBranch === "all" ? allShifts : allShifts.filter((shift) => shift.branchId === selectedBranch)
 
-  const presentCount = filteredShifts.filter((r) => r.status === "present").length
-  const absentCount = employees.length - filteredShifts.length
-  const onBreakCount = filteredShifts.filter((r) => r.status === "on-break").length
-  const checkedOutCount = filteredShifts.filter((r) => r.status === "checked-out").length
+  let presentCount = 0;
+  let onBreakCount = 0;
+  let checkedOutCount = 0;
+  
+  filteredShifts.forEach(shift => {
+    let effectiveStatus = shift.status;
+    if (shift.status === "present" || shift.status === "on-break") {
+       const shiftData = allBranchShifts.find(s => String(s.branch_id) === String(shift.branchId) && (s.type === shift.shift || s.id === shift.shift));
+       if (shiftData?.end_time && shift.checkIn) {
+           const checkIn = new Date(`${selectedDate}T${shift.checkIn}`);
+           let shiftEnd = new Date(checkIn);
+           const endParts = shiftData.end_time.split(":");
+           shiftEnd.setHours(parseInt(endParts[0]), parseInt(endParts[1]), 0, 0);
+           if (shiftEnd < checkIn) shiftEnd.setDate(shiftEnd.getDate() + 1);
+           if (new Date() > shiftEnd) {
+               effectiveStatus = "checked-out";
+           }
+       }
+    }
+    
+    if (effectiveStatus === "present") presentCount++;
+    else if (effectiveStatus === "on-break") onBreakCount++;
+    else if (effectiveStatus === "checked-out") checkedOutCount++;
+  });
+  
+  const absentCount = Math.max(0, employees.length - dailySummaries.length);
 
   const filteredSummaries = dailySummaries.filter((summary) => {
     if (selectedBranch === "all") return true
@@ -1632,12 +1654,19 @@ export function AttendanceSystem() {
                                           {formatDetailedTime(liveShift.workingHours)}
                                         </div>
                                       )}
-                                      <Badge className={`text-xs ${getStatusColor(shift.status)}`}>
-                                        {shift.status === "present" && "Sedang Bekerja"}
-                                        {shift.status === "on-break" && "Istirahat"}
-                                        {shift.status === "checked-out" && "Sudah Pulang"}
-                                        {shift.status === "absent" && "Belum Masuk"}
-                                      </Badge>
+                                      {(() => {
+                                        const effectiveStatus = (shift.status === "present" || shift.status === "on-break") && liveShift.isShiftEnded 
+                                            ? "checked-out" 
+                                            : shift.status;
+                                        return (
+                                          <Badge className={`text-xs ${getStatusColor(effectiveStatus)}`}>
+                                            {effectiveStatus === "present" && "Sedang Bekerja"}
+                                            {effectiveStatus === "on-break" && "Istirahat"}
+                                            {effectiveStatus === "checked-out" && "Sudah Pulang"}
+                                            {effectiveStatus === "absent" && "Belum Masuk"}
+                                          </Badge>
+                                        )
+                                      })()}
                                     </div>
                                   </div>
                                 </div>

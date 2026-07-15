@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -17,6 +17,7 @@ import { id } from "date-fns/locale"
 import { toast } from "@/hooks/use-toast"
 import { supabase, getEmployeeAttendanceWithPhotos, getEmployeePhotos } from "@/lib/supabase"
 import type { User, Attendance } from "@/lib/supabase"
+import { BranchShift, calculateLateSeconds, formatLateDuration, getLiveShiftTimes, formatDetailedTime, formatSeconds, formatBreakTime, resolveEffectiveStatus } from "@/lib/attendance-utils"
 
 type Employee = User & { avatar?: string }
 
@@ -90,6 +91,34 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
 
   // Calendar / history state
   const [historyViewMode, setHistoryViewMode] = useState<'calendar' | 'list'>('calendar')
+  
+  const [allBranchShifts, setAllBranchShifts] = useState<BranchShift[]>([])
+  const [timeTrigger, setTimeTrigger] = useState(new Date())
+
+  useEffect(() => {
+    const timer = setInterval(() => setTimeTrigger(new Date()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    supabase.from('branch_shifts').select('*').eq('is_active', true).then(({ data }) => {
+      if (data) {
+        // Map raw DB columns to BranchShift interface (sama dengan attendance-system.tsx)
+        const mapped = data.map((shift: any) => ({
+          id: shift.id,
+          name: shift.shift_name || shift.name,
+          start_time: shift.start_time,
+          end_time: shift.end_time,
+          type: shift.shift_type,          // mapping kolom shift_type → type
+          startTime: shift.start_time,
+          endTime: shift.end_time,
+          branch_id: shift.branch_id,
+          break_times: shift.break_times || [],
+        }))
+        setAllBranchShifts(mapped)
+      }
+    })
+  }, [])
   const [calendarMonth, setCalendarMonth]     = useState<Date>(new Date())
   const [calendarData, setCalendarData]       = useState<AttendanceWithDetails[]>([])
   const [calendarLoading, setCalendarLoading] = useState(false)
@@ -337,7 +366,16 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
                 </div>
                 <div className="p-4 space-y-3">
                   <div className="flex flex-wrap gap-2">
-                    <StatusPill status={latest.status} />
+                    {(() => {
+                      const latestDateStr = new Date(latest.date).toISOString().split('T')[0];
+                      const live = getLiveShiftTimes(latest, latestDateStr, null, allBranchShifts);
+                      const latestShiftData = allBranchShifts.find((s: any) =>
+                        String(s.branch_id) === String(latest.branches?.id || latest.branch_id) &&
+                        (s.type === latest.shift_type || s.id === latest.shift_type)
+                      ) || allBranchShifts.find((s: any) => s.type === latest.shift_type || s.id === latest.shift_type);
+                      const effectiveStatus = resolveEffectiveStatus(latest.status, latestDateStr, live.isShiftEnded, latestShiftData?.end_time);
+                      return <StatusPill status={effectiveStatus} />;
+                    })()}
                     {latest.branches && (
                       <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
                         <MapPin className="w-3 h-3" />{latest.branches.name}
@@ -346,6 +384,21 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
                     <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
                       <Clock className="w-3 h-3" />{SHIFT_MAP[latest.shift_type] || latest.shift_type}
                     </span>
+                    {(() => {
+                      const shiftData = allBranchShifts.find((s: any) => 
+                        String(s.branch_id) === String(latest.branches?.id || latest.branch_id) && 
+                        (s.type === latest.shift_type || s.id === latest.shift_type)
+                      ) || allBranchShifts.find((s: any) => 
+                        (s.type === latest.shift_type || s.id === latest.shift_type)
+                      );
+                      const lateSecs = calculateLateSeconds(latest.check_in_time ?? null, shiftData?.start_time);
+                      return lateSecs > 0 ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-red-700 bg-red-100 border border-red-200 px-2 py-0.5 rounded-md font-semibold">
+                          ⏰ Telat {formatLateDuration(lateSecs)}
+                          {shiftData?.start_time && ` dari ${shiftData.start_time}`}
+                        </span>
+                      ) : null;
+                    })()}
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-center">
@@ -358,9 +411,22 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
                     </div>
                     <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center">
                       <p className="text-[10px] font-semibold text-orange-500 uppercase tracking-wider">Durasi</p>
-                      <p className="text-lg font-black text-orange-700 mt-0.5">
-                        {latest.total_hours ? `${(latest.total_hours as number).toFixed(1)}j` : "—"}
-                      </p>
+                      {(() => {
+                        const live = getLiveShiftTimes(latest, new Date(latest.date).toISOString().split('T')[0], null, allBranchShifts);
+                        return (
+                          <div className="mt-0.5">
+                            {latest.status === 'on-break' || latest.status === 'on_break' ? (
+                                <div className="animate-pulse text-amber-600 font-bold text-sm">
+                                  Sedang Istirahat
+                                </div>
+                            ) : (
+                                <p className="text-lg font-black text-orange-700">
+                                  {formatDetailedTime(live.workingHours)}
+                                </p>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </div>
                   </div>
                   {/* Foto preview */}
@@ -556,9 +622,13 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
           const todayStr = new Date().toISOString().slice(0, 10)
 
           // Status colour helper
-          const dayColor = (rec?: AttendanceWithDetails) => {
+          const dayColor = (rec?: AttendanceWithDetails, dateStr?: string) => {
             if (!rec) return null
-            switch (rec.status) {
+            const recDate = (dateStr || rec.date || '').slice(0, 10);
+            const eff = resolveEffectiveStatus(rec.status, recDate, false);
+            // normalkan ke checked_out (DB style) agar switch case cocok
+            const norm = (eff === 'checked-out') ? 'checked_out' : eff;
+            switch (norm) {
               case 'checked_out': return { bg: 'bg-emerald-500', ring: 'ring-emerald-400', text: 'text-white', dot: 'bg-emerald-300' }
               case 'checked_in':  return { bg: 'bg-blue-500',    ring: 'ring-blue-400',    text: 'text-white', dot: 'bg-blue-300 animate-pulse' }
               case 'on_break':    return { bg: 'bg-amber-400',   ring: 'ring-amber-400',   text: 'text-white', dot: 'bg-amber-200' }
@@ -662,7 +732,7 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
                         const day = i + 1
                         const dateStr = `${year}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
                         const rec = attMap[dateStr]
-                        const col = dayColor(rec)
+                        const col = dayColor(rec, dateStr)
                         const isToday = dateStr === todayStr
                         const isSelected = selectedDay?.id === rec?.id && !!rec
                         const dayOfWeek = (startOffset + i) % 7  // 0=Mon…6=Sun
@@ -722,7 +792,16 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
                         </div>
                         <div className="p-4 space-y-3">
                           <div className="flex flex-wrap gap-2">
-                            <StatusPill status={r.status} />
+                            {(() => {
+                              const recDateStr = new Date(r.date).toISOString().split('T')[0];
+                              const live = getLiveShiftTimes(r, recDateStr, null, allBranchShifts);
+                              const rShiftData = allBranchShifts.find((s: any) =>
+                                String(s.branch_id) === String(r.branches?.id || r.branch_id) &&
+                                (s.type === r.shift_type || s.id === r.shift_type)
+                              ) || allBranchShifts.find((s: any) => s.type === r.shift_type || s.id === r.shift_type);
+                              const effectiveStatus = resolveEffectiveStatus(r.status, recDateStr, live.isShiftEnded, rShiftData?.end_time);
+                              return <StatusPill status={effectiveStatus} />;
+                            })()}
                             {r.branches && (
                               <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
                                 <MapPin className="w-3 h-3" />{r.branches.name}
@@ -731,6 +810,21 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
                             <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
                               <Clock className="w-3 h-3" />{SHIFT_MAP[r.shift_type] || r.shift_type}
                             </span>
+                            {(() => {
+                              const shiftData = allBranchShifts.find((s: any) => 
+                                String(s.branch_id) === String(r.branches?.id || r.branch_id) && 
+                                (s.type === r.shift_type || s.shift_type === r.shift_type || s.id === r.shift_type)
+                              ) || allBranchShifts.find((s: any) => 
+                                (s.type === r.shift_type || s.shift_type === r.shift_type || s.id === r.shift_type)
+                              );
+                              const lateSecs = calculateLateSeconds(r.check_in_time ?? null, shiftData?.start_time);
+                              return lateSecs > 0 ? (
+                                <span className="inline-flex items-center gap-1 text-xs text-red-700 bg-red-100 border border-red-200 px-2 py-0.5 rounded-md font-semibold">
+                                  ⏰ Telat {formatLateDuration(lateSecs)}
+                                  {shiftData?.start_time && ` dari ${shiftData.start_time}`}
+                                </span>
+                              ) : null;
+                            })()}
                           </div>
                           <div className="grid grid-cols-3 gap-2">
                             <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-center">
@@ -743,9 +837,28 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
                             </div>
                             <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center">
                               <p className="text-[10px] font-semibold text-orange-500 uppercase tracking-wider">Durasi</p>
-                              <p className="text-xl font-black text-orange-700 mt-0.5">
-                                {r.total_hours ? `${(Number(r.total_hours)).toFixed(1)}j` : '—'}
-                              </p>
+                              {(() => {
+                                const todayStr = format(new Date(), 'yyyy-MM-dd');
+                                const recDateStr = new Date(r.date).toISOString().split('T')[0];
+                                const isToday = recDateStr === todayStr;
+                                const isBreak = r.status === 'on-break' || r.status === 'on_break';
+                                
+                                if (isToday && !r.check_out_time) {
+                                  const live = getLiveShiftTimes(r, recDateStr, null, allBranchShifts);
+                                  return (
+                                    <div className="mt-0.5">
+                                      {isBreak ? (
+                                        <span className="text-amber-500 animate-pulse font-bold text-sm">Istirahat</span>
+                                      ) : (
+                                        <span className="text-xl font-black text-orange-700">{formatDetailedTime(live.workingHours)}</span>
+                                      )}
+                                    </div>
+                                  );
+                                }
+                                
+                                const h = Number(r.total_hours || 0);
+                                return <p className="text-xl font-black text-orange-700 mt-0.5">{h > 0 ? formatDetailedTime(h) : '—'}</p>;
+                              })()}
                             </div>
                           </div>
                           {(r.check_in_photo || r.check_out_photo) && (
@@ -801,44 +914,103 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
                       <p className="text-xs text-gray-400">Coba navigasi ke bulan yang berbeda</p>
                     </div>
                   ) : (
-                    [...calendarData].reverse().map((rec: AttendanceWithDetails) => (
-                      <div key={rec.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-                        <div className="flex items-center gap-3 px-4 py-3">
-                          <div className="flex-shrink-0 w-11 h-11 rounded-xl bg-red-50 border border-red-100 flex flex-col items-center justify-center">
-                            <span className="text-[10px] font-bold text-red-400 uppercase leading-none">{format(new Date(rec.date), "MMM", { locale: id })}</span>
-                            <span className="text-base font-black text-red-600 leading-none">{format(new Date(rec.date), "dd")}</span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
-                              <StatusPill status={rec.status} />
-                              {rec.branches && (
-                                <span className="text-[10px] text-gray-400">{rec.branches.name}</span>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-gray-400">{SHIFT_MAP[rec.shift_type] || rec.shift_type}</p>
-                          </div>
-                          <div className="flex-shrink-0 flex items-center gap-3 text-right">
-                            <div>
-                              <p className="text-[9px] text-gray-400 font-medium">MASUK</p>
-                              <p className="text-sm font-black text-emerald-600">{fmt(rec.check_in_time)}</p>
-                            </div>
-                            <div>
-                              <p className="text-[9px] text-gray-400 font-medium">KELUAR</p>
-                              <p className="text-sm font-black text-blue-600">{fmt(rec.check_out_time)}</p>
-                            </div>
-                            {rec.total_hours != null && (
+                    [...calendarData].reverse().map((rec: AttendanceWithDetails) => {
+                      const recDateStr = new Date(rec.date).toISOString().split('T')[0];
+                      const todayStr = format(new Date(), 'yyyy-MM-dd');
+                      const isToday = recDateStr === todayStr;
+                      const isBreak = rec.status === 'on-break' || rec.status === 'on_break';
+                      const live = getLiveShiftTimes(rec, recDateStr, null, allBranchShifts);
+
+                      // Cari data shift berdasarkan branch + shift_type
+                      const recShiftData = allBranchShifts.find((s: any) =>
+                        String(s.branch_id) === String(rec.branch_id) &&
+                        (s.type === rec.shift_type || s.shift_type === rec.shift_type)
+                      ) || allBranchShifts.find((s: any) =>
+                        (s.type === rec.shift_type || s.shift_type === rec.shift_type)
+                      );
+
+                      // ATURAN KERAS: berdasarkan data shift nyata (end_time), bukan asumsi jam
+                      const effectiveStatus = resolveEffectiveStatus(rec.status, recDateStr, live.isShiftEnded, recShiftData?.end_time);
+
+                      const lateSecs = calculateLateSeconds(rec.check_in_time ?? null, recShiftData?.start_time);
+
+                      let durasiDisplay: React.ReactNode;
+                      if (isToday && !rec.check_out_time) {
+                        durasiDisplay = isBreak
+                          ? <span className="text-amber-500 animate-pulse font-bold text-xs">Istirahat</span>
+                          : <span className="font-black text-blue-600">{formatDetailedTime(live.workingHours)}</span>;
+                      } else {
+                        const h = Number(rec.total_hours || 0);
+                        durasiDisplay = <span className="font-black text-gray-800">{h > 0 ? formatDetailedTime(h) : '—'}</span>;
+                      }
+
+                      const statusColors: Record<string, string> = {
+                        present: 'bg-emerald-500',
+                        'on-break': 'bg-amber-400',
+                        on_break: 'bg-amber-400',
+                        'checked-out': 'bg-blue-500',
+                        checked_out: 'bg-blue-500',
+                        absent: 'bg-red-400',
+                      };
+                      const statusDot = statusColors[effectiveStatus] ?? 'bg-gray-300';
+
+                      return (
+                        <div key={rec.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                          {/* ── Header Row ── */}
+                          <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-gray-50">
+                            <div className="flex items-center gap-2.5">
+                              {/* Date badge */}
+                              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-50 to-rose-100 border border-red-100 flex flex-col items-center justify-center flex-shrink-0">
+                                <span className="text-[9px] font-bold text-red-400 uppercase leading-none tracking-wider">
+                                  {format(new Date(rec.date), "MMM", { locale: id })}
+                                </span>
+                                <span className="text-sm font-black text-red-600 leading-tight">
+                                  {format(new Date(rec.date), "dd")}
+                                </span>
+                              </div>
+                              {/* Status & Branch */}
                               <div>
-                                <p className="text-[9px] text-gray-400 font-medium">DURASI</p>
-                                <p className="text-sm font-black text-orange-600">{(Number(rec.total_hours)).toFixed(1)}j</p>
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot}`} />
+                                  <StatusPill status={effectiveStatus} />
+                                </div>
+                                <p className="text-[10px] text-gray-400 mt-0.5">
+                                  {rec.branches?.name && <span className="font-medium">{rec.branches.name}</span>}
+                                  {rec.branches?.name && ' · '}
+                                  {SHIFT_MAP[rec.shift_type] || rec.shift_type}
+                                </p>
+                              </div>
+                            </div>
+                            {/* Late badge */}
+                            {lateSecs > 0 && (
+                              <div className="flex-shrink-0 inline-flex items-center gap-1 bg-red-50 text-red-600 border border-red-200 rounded-lg px-2 py-1">
+                                <span className="text-xs">⏰</span>
+                                <div className="text-right">
+                                  <p className="text-[9px] text-red-400 font-semibold uppercase leading-none">Telat</p>
+                                  <p className="text-xs font-black text-red-600 leading-tight">{formatLateDuration(lateSecs)}</p>
+                                </div>
                               </div>
                             )}
                           </div>
-                          {(rec.check_in_photo || rec.check_out_photo) && (
-                            <Camera className="flex-shrink-0 w-4 h-4 text-gray-300" />
-                          )}
+
+                          {/* ── Time Grid ── */}
+                          <div className="grid grid-cols-3 divide-x divide-gray-50">
+                            <div className="px-4 py-2.5 text-center">
+                              <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Masuk</p>
+                              <p className="text-sm font-black text-emerald-600">{fmt(rec.check_in_time)}</p>
+                            </div>
+                            <div className="px-4 py-2.5 text-center">
+                              <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Keluar</p>
+                              <p className="text-sm font-black text-blue-600">{fmt(rec.check_out_time)}</p>
+                            </div>
+                            <div className="px-4 py-2.5 text-center">
+                              <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Durasi</p>
+                              <p className="text-sm">{durasiDisplay}</p>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               )}
