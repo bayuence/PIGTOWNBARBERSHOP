@@ -614,7 +614,22 @@ export function AttendanceSystem() {
 
         const currentStatus = mostRecentActiveShift?.status || (shifts.length > 0 ? "checked-out" : "absent")
 
-        const canCheckIn = !mostRecentActiveShift
+        let hasAvailableShifts = false;
+        const isToday = selectedDate === format(new Date(), "yyyy-MM-dd");
+        if (isToday) {
+           hasAvailableShifts = allBranchShifts.some(shift => {
+               if (!shift.end_time) return true;
+               const endParts = shift.end_time.split(":");
+               const shiftEnd = new Date();
+               shiftEnd.setHours(parseInt(endParts[0]), parseInt(endParts[1]), 0, 0);
+               return shiftEnd > new Date();
+           });
+        }
+        
+        // Karyawan bisa Check In jika:
+        // 1. Tidak punya shift yang sedang berjalan (present/on-break)
+        // 2. Masih ada shift yang tersedia (belum melewati batas waktu selesai shift) hari ini
+        const canCheckIn = !mostRecentActiveShift && hasAvailableShifts;
 
         console.log(`[fetchAttendanceRecords] Employee ${emp.name} summary:`, {
           shiftsCount: shifts.length,
