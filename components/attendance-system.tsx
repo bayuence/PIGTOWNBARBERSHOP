@@ -513,6 +513,54 @@ export function AttendanceSystem() {
 
       setAttendanceRecords(data || [])
 
+      // --- [NEW LOGIC] AUTO CHECKOUT OVERDUE SHIFTS ---
+      let hasUpdates = false;
+      const { data: allShifts } = await supabase.from('branch_shifts').select('*');
+      
+      if (data && allShifts) {
+        for (const record of data) {
+          if (!record.check_out_time && (record.status === 'present' || record.status === 'on-break' || record.status === 'on_break')) {
+            const shiftName = record.shift_type || "Unknown";
+            const shiftData = allShifts.find(s => 
+              String(s.branch_id) === String(record.branch_id) && 
+              (s.type === shiftName || s.shift_type === shiftName || s.id === shiftName)
+            ) || allShifts.find(s => s.type === shiftName || s.shift_type === shiftName || s.id === shiftName);
+
+            if (shiftData && shiftData.end_time) {
+              const shiftEnd = new Date(record.date);
+              const [endH, endM] = shiftData.end_time.split(':').map(Number);
+              shiftEnd.setHours(endH, endM, 0, 0);
+              
+              if (new Date() >= shiftEnd) {
+                // Shift has ended, but employee hasn't checked out -> AUTO CHECKOUT
+                const calc = calculateShiftTimes(
+                  shiftData,
+                  record.check_in_time,
+                  shiftData.end_time,
+                  record.break_start_time,
+                  record.break_duration || 0,
+                  record.date,
+                  null
+                );
+                
+                await supabase.from("attendance").update({
+                  check_out_time: shiftData.end_time,
+                  status: "checked_out",
+                  total_hours: calc.workingHours
+                }).eq("id", record.id);
+                
+                // Mutate local data so it shows up correctly immediately
+                record.check_out_time = shiftData.end_time;
+                record.status = 'checked_out';
+                record.total_hours = calc.workingHours;
+                hasUpdates = true;
+              }
+            }
+          }
+        }
+      }
+      // --- END AUTO CHECKOUT ---
+
       const employeeAttendanceMap = new Map()
 
       data?.forEach((record: any) => {
