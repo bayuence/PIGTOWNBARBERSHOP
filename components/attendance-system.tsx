@@ -193,7 +193,17 @@ const formatLateDuration = (totalSeconds: number): string => {
   return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 };
 
-const calculateShiftTimes = (shiftData: BranchShift | undefined, checkInTime: string | null, checkOutTime: string | null, breakStart: string | null, manualBreakDuration: number, dateStr: string, activeBreakStart: string | null) => {
+// replacementCheckInTime: jam check-in rekan tertua di cabang yang sama (string HH:mm:ss atau null)
+const calculateShiftTimes = (
+  shiftData: BranchShift | undefined,
+  checkInTime: string | null,
+  checkOutTime: string | null,
+  breakStart: string | null,
+  manualBreakDuration: number,
+  dateStr: string,
+  activeBreakStart: string | null,
+  replacementCheckInTime: string | null = null
+) => {
   if (!checkInTime) return { workingHours: 0, breakTime: 0, isAutoBreak: false };
 
   const checkIn = new Date(`${dateStr}T${checkInTime}`);
@@ -210,7 +220,6 @@ const calculateShiftTimes = (shiftData: BranchShift | undefined, checkInTime: st
      shiftEnd = new Date(checkIn);
      shiftEnd.setHours(parseInt(endParts[0]), parseInt(endParts[1]), 0, 0);
      if (shiftEnd < checkIn) {
-         // shift passed midnight
          shiftEnd.setDate(shiftEnd.getDate() + 1);
      }
      hasShiftEnd = true;
@@ -219,10 +228,10 @@ const calculateShiftTimes = (shiftData: BranchShift | undefined, checkInTime: st
   let workMinutes = (effectiveEnd.getTime() - checkIn.getTime()) / (1000 * 60);
   if (workMinutes < 0) workMinutes = 0;
 
-  // Break hanya dari manual break (break_duration yang sudah selesai)
+  // Break dari manual (yang sudah selesai)
   let totalBreakMinutes = manualBreakDuration || 0;
   
-  // Hitung ongoing manual break (jika sedang istirahat manual sekarang)
+  // Ongoing manual break
   if (activeBreakStart && !checkOutTime) {
       const bStart = new Date(`${dateStr}T${activeBreakStart}`);
       let bEnd = new Date();
@@ -232,8 +241,9 @@ const calculateShiftTimes = (shiftData: BranchShift | undefined, checkInTime: st
       }
   }
 
-  // CATATAN: break_times dari shift TIDAK otomatis dikurangi dari jam kerja.
-  // break_times hanya digunakan untuk deteksi isAutoBreak (tampil info "Waktunya Istirahat").
+  // Break terjadwal dari break_times:
+  // Wajib dilaksanakan, tapi efektif mulai dari max(break_start, replacementCheckInTime)
+  // karena karyawan baru bisa istirahat setelah ada yang standy.
   let isAutoBreak = false;
   if (shiftData?.break_times && shiftData.break_times.length > 0) {
       const now = new Date();
@@ -241,13 +251,33 @@ const calculateShiftTimes = (shiftData: BranchShift | undefined, checkInTime: st
           if (!bt.start || !bt.end) return;
           const s = bt.start.split(":");
           const e = bt.end.split(":");
-          const bStart = new Date(checkIn);
-          bStart.setHours(parseInt(s[0]), parseInt(s[1]), 0, 0);
-          const bEnd = new Date(checkIn);
-          bEnd.setHours(parseInt(e[0]), parseInt(e[1]), 0, 0);
-          if (bEnd < bStart) bEnd.setDate(bEnd.getDate() + 1);
-          // Hanya deteksi apakah sekarang waktunya break terjadwal
-          if (!checkOutTime && now >= bStart && now <= bEnd) {
+
+          const scheduledBreakStart = new Date(checkIn);
+          scheduledBreakStart.setHours(parseInt(s[0]), parseInt(s[1]), 0, 0);
+          const scheduledBreakEnd = new Date(checkIn);
+          scheduledBreakEnd.setHours(parseInt(e[0]), parseInt(e[1]), 0, 0);
+          if (scheduledBreakEnd < scheduledBreakStart) scheduledBreakEnd.setDate(scheduledBreakEnd.getDate() + 1);
+
+          // Jam efektif mulai istirahat = max(jadwal_mulai, jam_teman_checkin)
+          let effectiveBreakStart = scheduledBreakStart;
+          if (replacementCheckInTime) {
+              const repTime = new Date(`${dateStr}T${replacementCheckInTime}`);
+              if (repTime > effectiveBreakStart) {
+                  effectiveBreakStart = repTime;
+              }
+          }
+
+          // Batas akhir break = min(jadwal_selesai, effectiveEnd)
+          const effectiveBreakEnd = new Date(Math.min(scheduledBreakEnd.getTime(), effectiveEnd.getTime()));
+
+          // Hitung durasi break efektif (hanya jika masih ada sisa)
+          if (effectiveBreakEnd > effectiveBreakStart) {
+              const breakMinutes = (effectiveBreakEnd.getTime() - effectiveBreakStart.getTime()) / (1000 * 60);
+              totalBreakMinutes += breakMinutes;
+          }
+
+          // Deteksi apakah sekarang dalam window break terjadwal
+          if (!checkOutTime && now >= scheduledBreakStart && now <= scheduledBreakEnd) {
               isAutoBreak = true;
           }
       });
@@ -1119,8 +1149,8 @@ export function AttendanceSystem() {
       const shiftStartMinutes = parseTime(selectedShiftData.start_time)
       const shiftEndMinutes = parseTime(selectedShiftData.end_time)
 
-      // Toleransi 30 menit sebelum shift dimulai
-      const toleranceMinutes = 30
+      // Toleransi 15 menit sebelum shift dimulai
+      const toleranceMinutes = 15
       const allowedStartMinutes = shiftStartMinutes - toleranceMinutes
 
       // Cek apakah waktu sekarang dalam range shift (dengan toleransi)
@@ -1128,26 +1158,24 @@ export function AttendanceSystem() {
 
       if (shiftEndMinutes > shiftStartMinutes) {
         // Shift normal (tidak melewati tengah malam)
-        // Contoh: 09:00 - 15:00
         isWithinShiftTime =
           currentTimeInMinutes >= allowedStartMinutes && currentTimeInMinutes < shiftEndMinutes
       } else {
         // Shift melewati tengah malam
-        // Contoh: 21:00 - 03:00 (next day)
         isWithinShiftTime =
           currentTimeInMinutes >= allowedStartMinutes || currentTimeInMinutes < shiftEndMinutes
       }
 
       if (!isWithinShiftTime) {
         const formatTime = (minutes: number): string => {
-          const h = Math.floor(minutes / 60)
-          const m = minutes % 60
+          const h = Math.floor(Math.abs(minutes) / 60) % 24
+          const m = Math.abs(minutes) % 60
           return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`
         }
 
         toast({
           title: "Waktu Check-in Tidak Sesuai",
-          description: `Shift ${selectedShiftData.name} hanya bisa check-in mulai jam ${formatTime(allowedStartMinutes)} sampai ${selectedShiftData.end_time}. Waktu sekarang: ${currentHour.toString().padStart(2, "0")}:${currentMinute.toString().padStart(2, "0")}`,
+          description: `Shift ${selectedShiftData.name} bisa check-in mulai jam ${formatTime(allowedStartMinutes)} (15 menit sebelum shift) sampai jam ${selectedShiftData.end_time}. Waktu sekarang: ${currentHour.toString().padStart(2, "0")}:${currentMinute.toString().padStart(2, "0")}`,
           variant: "destructive",
         })
         return
@@ -1228,13 +1256,14 @@ export function AttendanceSystem() {
     }
   }
 
-  const getLiveShiftTimes = (shift: any, dateStr: string) => {
+  // replacementCheckInTime: jam check-in pertama karyawan lain yang hadir di cabang yang sama
+  const getLiveShiftTimes = (shift: any, dateStr: string, replacementCheckInTime: string | null = null) => {
     let totalWorkingHours = shift.totalWorkingHours;
     let totalBreakTime = shift.totalBreakTime;
     let isAutoBreak = false;
 
-    if (shift.status === "present" || shift.status === "on-break") {
-      const shiftData = allBranchShifts.find(s => s.branch_id === shift.branchId && (s.type === shift.shift || s.id === shift.shift));
+    if (shift.status === "present" || shift.status === "on-break" || shift.status === "checked-out") {
+      const shiftData = allBranchShifts.find(s => String(s.branch_id) === String(shift.branchId) && (s.type === shift.shift || s.id === shift.shift));
       const calc = calculateShiftTimes(
         shiftData,
         shift.checkIn,
@@ -1242,7 +1271,8 @@ export function AttendanceSystem() {
         shift.breakStart,
         shift.manualBreakDuration || 0,
         dateStr,
-        shift.status === "on-break" ? shift.breakStart : null
+        shift.status === "on-break" ? shift.breakStart : null,
+        replacementCheckInTime
       );
       totalWorkingHours = calc.workingHours;
       totalBreakTime = calc.breakTime;
@@ -1256,13 +1286,31 @@ export function AttendanceSystem() {
     }
   }
 
+  // Cari jam check-in pertama karyawan LAIN di cabang yang sama
+  const getReplacementCheckIn = (myEmployeeId: string, branchId: string): string | null => {
+    let earliest: string | null = null;
+    dailySummaries.forEach(s => {
+      if (s.employeeId === myEmployeeId) return;
+      s.shifts.forEach(sh => {
+        if (String(sh.branchId) !== String(branchId)) return;
+        if (!sh.checkIn) return;
+        if (!earliest || sh.checkIn < earliest) {
+          earliest = sh.checkIn;
+        }
+      });
+    });
+    return earliest;
+  }
+
   const getLiveSummaryTimes = (summary: DailyAttendanceSummary) => {
     let totalDailyHours = 0;
     let totalDailyBreaks = 0;
     let isAutoBreak = false;
 
     summary.shifts.forEach((shift) => {
-      const liveTimes = getLiveShiftTimes(shift, summary.date);
+      // Cari jam check-in pengganti (rekan kerja di cabang yang sama)
+      const replacementCheckIn = getReplacementCheckIn(summary.employeeId, String(shift.branchId));
+      const liveTimes = getLiveShiftTimes(shift, summary.date, replacementCheckIn);
       totalDailyHours += liveTimes.workingHours;
       totalDailyBreaks += liveTimes.breakTime;
       if (liveTimes.isAutoBreak) isAutoBreak = true;
@@ -1319,6 +1367,13 @@ export function AttendanceSystem() {
         <div className="w-full">
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Sistem Presensi Karyawan</h1>
           <p className="text-sm sm:text-base text-muted-foreground">Kelola presensi karyawan dengan foto dan tracking waktu</p>
+          {/* Info banner aturan check-in */}
+          <div className="mt-2 inline-flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5">
+            <span className="text-blue-500 text-sm">ℹ️</span>
+            <span className="text-xs text-blue-700 font-medium">
+              Check-in dapat dilakukan mulai <strong>15 menit sebelum</strong> jam shift dimulai
+            </span>
+          </div>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
           <Select value={selectedBranch} onValueChange={setSelectedBranch}>
@@ -1463,7 +1518,7 @@ export function AttendanceSystem() {
                           {summary.shifts
                             .sort((a, b) => new Date(a.checkIn || "").getTime() - new Date(b.checkIn || "").getTime())
                             .map((shift, index) => {
-                              const liveShift = getLiveShiftTimes(shift, summary.date)
+                              const liveShift = getLiveShiftTimes(shift, summary.date, getReplacementCheckIn(summary.employeeId, String(shift.branchId)))
                               return (
                                 <div key={shift.id} className="bg-gray-50 rounded-lg p-3 text-xs sm:text-sm">
                                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
@@ -1619,101 +1674,160 @@ export function AttendanceSystem() {
                 Riwayat Presensi
               </CardTitle>
               <CardDescription className="text-xs sm:text-sm">
-                Riwayat presensi karyawan dengan detail jam kerja
+                Riwayat presensi karyawan dengan detail jam kerja, keterlambatan, dan shift
               </CardDescription>
             </CardHeader>
             <CardContent className="p-4 sm:p-6">
-              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {dailySummaries.map((summary) => {
                   const liveTimes = getLiveSummaryTimes(summary)
+                  const employee = employees.find((e) => e.id === summary.employeeId)
+                  const anyLate = summary.shifts.some(s => s.isLate && s.lateSeconds > 0)
+                  const totalLateSeconds = summary.shifts.reduce((acc, s) => acc + (s.isLate ? s.lateSeconds : 0), 0)
+
+                  const statusConfig: Record<string, { bg: string; text: string; dot: string; label: string }> = {
+                    present:       { bg: "bg-emerald-100", text: "text-emerald-800", dot: "bg-emerald-500", label: "Sedang Bekerja" },
+                    "on-break":    { bg: "bg-amber-100",   text: "text-amber-800",   dot: "bg-amber-500",   label: "Istirahat" },
+                    "checked-out": { bg: "bg-blue-100",    text: "text-blue-800",    dot: "bg-blue-500",    label: "Sudah Pulang" },
+                    absent:        { bg: "bg-red-100",     text: "text-red-800",     dot: "bg-red-500",     label: "Tidak Hadir" },
+                    late:          { bg: "bg-orange-100",  text: "text-orange-800",  dot: "bg-orange-500",  label: "Terlambat" },
+                  }
+                  const sc = statusConfig[summary.currentStatus] ?? statusConfig.absent
+
                   return (
-                    <Card key={`${summary.employeeId}-${summary.date}`} className="hover:shadow-lg transition-shadow">
-                      <CardHeader className="p-3 sm:p-4 pb-2 sm:pb-3">
-                        <div className="flex items-center gap-2 sm:gap-3">
-                          <Avatar className="h-8 w-8 sm:h-10 sm:w-10">
-                            <AvatarFallback className="bg-primary/10 text-primary text-xs sm:text-sm">
-                              {summary.employeeName
-                                ? summary.employeeName
-                                    .split(" ")
-                                    .map((n) => n[0])
-                                    .join("")
-                                : "?"}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1">
-                            <h3 className="font-semibold text-sm sm:text-base">{summary.employeeName}</h3>
-                          </div>
-                          <span
-                            className={`text-xs px-2 py-1 rounded-full font-medium ${
-                              summary.currentStatus === "present"
-                                ? "bg-green-100 text-green-800"
-                                : summary.currentStatus === "on-break"
-                                  ? "bg-yellow-100 text-yellow-800"
-                                  : summary.currentStatus === "checked-out"
-                                    ? "bg-blue-100 text-blue-800"
-                                    : "bg-red-100 text-red-800"
-                            }`}
-                          >
-                            {summary.currentStatus === "present"
-                              ? "Hadir"
-                              : summary.currentStatus === "on-break"
-                                ? "Istirahat"
-                                : summary.currentStatus === "checked-out"
-                                  ? "Pulang"
-                                  : "Tidak Hadir"}
-                          </span>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="p-3 sm:p-4 space-y-3 sm:space-y-4">
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs sm:text-sm font-medium text-muted-foreground">Tanggal:</span>
-                            <span className="text-xs sm:text-sm font-semibold">{summary.date}</span>
-                          </div>
-                        </div>
+                    <div key={`${summary.employeeId}-${summary.date}`}
+                      className="rounded-2xl border border-gray-100 bg-white shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
 
-                        <div className="space-y-2 sm:space-y-3 pt-2 sm:pt-3 border-t">
-                          <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                            <div className="text-center p-2 sm:p-3 bg-green-50 rounded-lg">
-                              <p className="text-xs text-green-600 font-medium mb-1">Check In</p>
-                              <p className="text-xs sm:text-sm font-bold text-green-800">
-                                {summary.shifts.length > 0 && summary.shifts[0].checkIn
-                                  ? summary.shifts[0].checkIn
-                                  : "--:--"}
-                              </p>
-                            </div>
-                            <div className="text-center p-2 sm:p-3 bg-red-50 rounded-lg">
-                              <p className="text-xs text-red-600 font-medium mb-1">Check Out</p>
-                              <p className="text-xs sm:text-sm font-bold text-red-800">
-                                {summary.shifts.length > 0 && summary.shifts[summary.shifts.length - 1].checkOut
-                                  ? summary.shifts[summary.shifts.length - 1].checkOut
-                                  : "--:--"}
-                              </p>
-                            </div>
+                      {/* Header karyawan */}
+                      <div className="flex items-center justify-between px-4 pt-4 pb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                            {summary.employeeName?.charAt(0).toUpperCase() ?? "?"}
                           </div>
-
-                          <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                            <div className="text-center p-2 sm:p-3 bg-blue-50 rounded-lg">
-                              <p className="text-xs text-blue-600 font-medium mb-1">Total Kerja</p>
-                              <p className="text-xs sm:text-sm font-bold text-blue-800">
-                                {liveTimes.totalDailyHours > 0 ? formatDetailedTime(liveTimes.totalDailyHours) : "00:00:00"}
-                              </p>
-                            </div>
-                            <div className="text-center p-2 sm:p-3 bg-yellow-50 rounded-lg">
-                              <p className="text-xs text-yellow-600 font-medium mb-1">Total Istirahat</p>
-                              <p className="text-xs sm:text-sm font-bold text-yellow-800">
-                                {formatBreakTime(liveTimes.totalDailyBreaks)}
-                              </p>
-                            </div>
+                          <div>
+                            <p className="font-semibold text-sm text-gray-900">{summary.employeeName}</p>
+                            {employee?.position && (
+                              <p className="text-xs text-gray-400">{employee.position}</p>
+                            )}
                           </div>
                         </div>
-                      </CardContent>
-                    </Card>
+                        <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium ${sc.bg} ${sc.text}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
+                          {sc.label}
+                        </span>
+                      </div>
+
+                      {/* Badge telat global */}
+                      {anyLate && (
+                        <div className="mx-4 mb-3 flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                          <span className="text-base">&#9200;</span>
+                          <div>
+                            <p className="text-xs font-semibold text-red-700">
+                              Terlambat {formatLateDuration(totalLateSeconds)}
+                            </p>
+                            <p className="text-xs text-red-500">dari jam shift yang ditentukan</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Tanggal + jumlah shift */}
+                      <div className="mx-4 mb-3 flex items-center justify-between text-xs text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {summary.date}
+                        </span>
+                        <span>{summary.shifts.length} shift</span>
+                      </div>
+
+                      {/* Per-shift detail */}
+                      {summary.shifts.length > 0 && (
+                        <div className="mx-4 mb-3 space-y-2">
+                          {summary.shifts
+                            .sort((a, b) => new Date(a.checkIn || "").getTime() - new Date(b.checkIn || "").getTime())
+                            .map((shift, idx) => {
+                              const liveShift = getLiveShiftTimes(shift, summary.date, getReplacementCheckIn(summary.employeeId, String(shift.branchId)))
+                              return (
+                                <div key={shift.id} className="rounded-xl bg-gray-50 border border-gray-100 p-3 space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-semibold text-gray-700">
+                                      {shift.shiftDisplayName || `Shift ${idx + 1}`}
+                                    </span>
+                                    <span className="text-xs text-gray-400">{shift.branch}</span>
+                                  </div>
+
+                                  {(shift.shiftStartTime || shift.shiftEndTime) && (
+                                    <div className="text-xs text-gray-400">
+                                      Jadwal: {shift.shiftStartTime ?? "--:--"} &#8594; {shift.shiftEndTime ?? "--:--"}
+                                    </div>
+                                  )}
+
+                                  {shift.isLate && shift.lateSeconds > 0 && (
+                                    <div className="inline-flex items-center gap-1 bg-red-100 text-red-700 border border-red-200 rounded-md px-2 py-0.5">
+                                      <span className="text-xs">&#9200;</span>
+                                      <span className="text-xs font-semibold">
+                                        Telat {formatLateDuration(shift.lateSeconds)} dari jam {shift.shiftStartTime}
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div className="bg-emerald-50 rounded-lg p-2 text-center">
+                                      <p className="text-xs text-emerald-600 font-medium">Check In</p>
+                                      <p className="text-xs font-bold text-emerald-800 mt-0.5">
+                                        {shift.checkIn ?? "--:--:--"}
+                                      </p>
+                                    </div>
+                                    <div className="bg-rose-50 rounded-lg p-2 text-center">
+                                      <p className="text-xs text-rose-600 font-medium">Check Out</p>
+                                      <p className="text-xs font-bold text-rose-800 mt-0.5">
+                                        {shift.checkOut ?? "--:--:--"}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center justify-between pt-1 border-t border-gray-100">
+                                    <span className="text-xs text-gray-500">Durasi kerja</span>
+                                    <span className="text-xs font-bold text-blue-700">
+                                      {formatDetailedTime(liveShift.workingHours)}
+                                    </span>
+                                  </div>
+
+                                  {liveShift.breakTime > 0 && (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs text-gray-500">Istirahat</span>
+                                      <span className="text-xs font-semibold text-amber-600">
+                                        {formatBreakTime(liveShift.breakTime)}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                        </div>
+                      )}
+
+                      {/* Ringkasan total harian */}
+                      <div className="border-t border-gray-100 px-4 py-3 grid grid-cols-2 gap-3 bg-gray-50/50">
+                        <div className="text-center">
+                          <p className="text-xs text-blue-500 font-medium mb-0.5">Total Kerja</p>
+                          <p className="text-sm font-bold text-blue-800">
+                            {liveTimes.totalDailyHours > 0 ? formatDetailedTime(liveTimes.totalDailyHours) : "00:00:00"}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-xs text-amber-500 font-medium mb-0.5">Total Istirahat</p>
+                          <p className="text-sm font-bold text-amber-800">
+                            {formatBreakTime(liveTimes.totalDailyBreaks)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   )
                 })}
               </div>
 
               {dailySummaries.length === 0 && (
+
                 <div className="text-center py-6 sm:py-8">
                   <Calendar className="h-8 w-8 sm:h-10 sm:w-10 mx-auto text-muted-foreground mb-3 sm:mb-4" />
                   <p className="text-muted-foreground text-sm sm:text-base">Belum ada data presensi</p>
