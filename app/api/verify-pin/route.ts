@@ -15,8 +15,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'PIN tidak valid' }, { status: 400 })
     }
 
-    // Cari user berdasarkan PIN - berjalan di server sehingga bypass RLS
-    // Gunakan .limit(1) bukan .single() karena bisa ada banyak user dengan PIN sama
+    // Cari user aktif dengan PIN ini - langsung ambil pertama yang cocok
     const { data, error } = await supabaseAdmin
       .from('users')
       .select('id, name, email, role, position, branch_id, status, pin')
@@ -28,11 +27,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'PIN tidak ditemukan' }, { status: 401 })
     }
 
-    // Ambil user pertama yang cocok
-    const user = data[0]
-
     // Jangan kirim PIN ke klien
-    const { pin: _, ...userWithoutPin } = user
+    const { pin: _, ...userWithoutPin } = data[0]
 
     return NextResponse.json({ user: userWithoutPin })
   } catch (err) {

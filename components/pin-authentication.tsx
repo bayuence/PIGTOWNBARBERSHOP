@@ -10,18 +10,18 @@ import { Shield, Lock, Eye, EyeOff, AlertCircle, Loader2, User } from "lucide-re
 
 interface PinAuthenticationProps {
   isOpen: boolean
-  onSuccess: (userData: any) => void  // Sekarang mengembalikan data user
+  onSuccess: (userData: any) => void
   onCancel: () => void
   title?: string
   description?: string
 }
 
-export function PinAuthentication({ 
-  isOpen, 
-  onSuccess, 
-  onCancel, 
+export function PinAuthentication({
+  isOpen,
+  onSuccess,
+  onCancel,
   title = "Autentikasi PIN",
-  description = "Masukkan PIN 6 digit untuk melanjutkan"
+  description = "Masukkan PIN 6 digit untuk melanjutkan",
 }: PinAuthenticationProps) {
   const [pin, setPin] = useState(["", "", "", "", "", ""])
   const [showPin, setShowPin] = useState(false)
@@ -31,25 +31,28 @@ export function PinAuthentication({
   const [isLoading, setIsLoading] = useState(false)
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
 
-  const MAX_ATTEMPTS = 5  // Lebih banyak attempt karena lebih fleksibel
-  const LOCK_DURATION = 180000 // 3 minutes in milliseconds
+  const MAX_ATTEMPTS = 5
+  const LOCK_DURATION = 180000 // 3 menit
 
+  // Reset semua state saat modal dibuka
   useEffect(() => {
     if (isOpen) {
-      // Reset state ketika modal dibuka
       setPin(["", "", "", "", "", ""])
       setAttempts(0)
       setIsLocked(false)
       setLockTimeRemaining(0)
       setIsLoading(false)
-      
-      // Focus ke input pertama
-      setTimeout(() => {
+
+      // Tunggu animasi dialog selesai baru focus
+      const focusTimer = setTimeout(() => {
         inputRefs.current[0]?.focus()
-      }, 100)
+      }, 300)
+
+      return () => clearTimeout(focusTimer)
     }
   }, [isOpen])
 
+  // Countdown timer saat akun dikunci
   useEffect(() => {
     if (isLocked && lockTimeRemaining > 0) {
       const timer = setTimeout(() => {
@@ -63,23 +66,18 @@ export function PinAuthentication({
     }
   }, [isLocked, lockTimeRemaining])
 
-  // Fungsi untuk mencari user berdasarkan PIN via API route (server-side, bypass RLS)
-  const findUserByPin = async (pinValue: string): Promise<any> => {
+  const verifyPin = async (pinValue: string): Promise<any> => {
     try {
-      const response = await fetch('/api/verify-pin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/verify-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pin: pinValue }),
       })
-
-      if (!response.ok) {
-        return null
-      }
-
+      if (!response.ok) return null
       const result = await response.json()
       return result.user || null
     } catch (error) {
-      console.error('Error finding user by PIN:', error)
+      console.error("Error verifying PIN:", error)
       return null
     }
   }
@@ -87,21 +85,21 @@ export function PinAuthentication({
   const handlePinChange = (index: number, value: string) => {
     if (isLocked || isLoading) return
 
-    // Only allow numbers
-    if (value && !/^\d$/.test(value)) return
+    // Hanya ambil 1 digit angka
+    const numericValue = value.replace(/\D/g, "").slice(-1)
+    if (value && !numericValue) return
 
     const newPin = [...pin]
-    newPin[index] = value
-
+    newPin[index] = numericValue
     setPin(newPin)
 
-    // Auto-focus next input
-    if (value && index < 5) {
+    // Auto-focus ke kotak berikutnya
+    if (numericValue && index < 5) {
       inputRefs.current[index + 1]?.focus()
     }
 
-    // Auto-submit when all fields are filled
-    if (newPin.every((digit) => digit !== "") && newPin.join("").length === 6) {
+    // Auto-submit saat 6 digit terisi
+    if (newPin.every((d) => d !== "") && newPin.join("").length === 6) {
       setTimeout(() => handleSubmit(newPin.join("")), 100)
     }
   }
@@ -111,13 +109,34 @@ export function PinAuthentication({
 
     if (e.key === "Backspace") {
       if (!pin[index] && index > 0) {
-        // Backspace ke input sebelumnya
         inputRefs.current[index - 1]?.focus()
       } else if (pin[index]) {
-        // Clear current input
         const newPin = [...pin]
         newPin[index] = ""
         setPin(newPin)
+      }
+    }
+  }
+
+  const handleInputClick = (index: number) => {
+    if (isLocked || isLoading) return
+    inputRefs.current[index]?.focus()
+  }
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    if (isLocked || isLoading) return
+    e.preventDefault()
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6)
+    if (pasted.length > 0) {
+      const newPin = [...pin]
+      pasted.split("").forEach((char, i) => {
+        if (i < 6) newPin[i] = char
+      })
+      setPin(newPin)
+      const nextIndex = Math.min(pasted.length, 5)
+      inputRefs.current[nextIndex]?.focus()
+      if (newPin.every((d) => d !== "") && newPin.join("").length === 6) {
+        setTimeout(() => handleSubmit(newPin.join("")), 100)
       }
     }
   }
@@ -139,18 +158,17 @@ export function PinAuthentication({
     setIsLoading(true)
 
     try {
-      // Cari user berdasarkan PIN
-      const userData = await findUserByPin(currentPin)
+      const userData = await verifyPin(currentPin)
 
       if (userData) {
-        // PIN valid - kirim data user ke parent component
+        // PIN valid → langsung masuk
         toast({
-          title: "Autentikasi Berhasil",
-          description: `Selamat datang, ${userData.name || userData.email}!`,
+          title: "Berhasil Masuk",
+          description: "Selamat datang!",
         })
         onSuccess(userData)
       } else {
-        // PIN tidak valid
+        // PIN salah
         const newAttempts = attempts + 1
         setAttempts(newAttempts)
 
@@ -170,15 +188,14 @@ export function PinAuthentication({
           })
         }
 
-        // Clear PIN untuk percobaan berikutnya
         setPin(["", "", "", "", "", ""])
-        inputRefs.current[0]?.focus()
+        setTimeout(() => inputRefs.current[0]?.focus(), 50)
       }
     } catch (error) {
       console.error("Authentication error:", error)
       toast({
         title: "Error",
-        description: "Terjadi kesalahan saat autentikasi. Silakan coba lagi.",
+        description: "Terjadi kesalahan. Silakan coba lagi.",
         variant: "destructive",
       })
     } finally {
@@ -193,25 +210,18 @@ export function PinAuthentication({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => {
-      if (!open) {
-        // Samakan perilaku tombol X dengan tombol Batal: selalu kembali ke menu sebelumnya
-        onCancel()
-      }
-    }}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onCancel() }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-center justify-center">
+          <DialogTitle className="flex items-center gap-2 justify-center">
             <Shield className="h-6 w-6 text-primary" />
             {title}
           </DialogTitle>
-          <DialogDescription className="text-center">
-            {description}
-          </DialogDescription>
+          <DialogDescription className="text-center">{description}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
-          {/* Loading State */}
+          {/* Loading */}
           {isLoading && (
             <div className="flex items-center justify-center py-4">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -224,10 +234,10 @@ export function PinAuthentication({
             <div className="flex items-center justify-center gap-2">
               <Lock className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Masukkan PIN</span>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="h-6 w-6 p-0" 
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0"
                 onClick={() => setShowPin(!showPin)}
                 disabled={isLoading}
               >
@@ -239,24 +249,24 @@ export function PinAuthentication({
               {pin.map((digit, index) => (
                 <Input
                   key={index}
-                  ref={(el: HTMLInputElement | null) => {
-                    inputRefs.current[index] = el
-                  }}
+                  ref={(el: HTMLInputElement | null) => { inputRefs.current[index] = el }}
                   type={showPin ? "text" : "password"}
                   value={digit}
                   onChange={(e) => handlePinChange(index, e.target.value)}
                   onKeyDown={(e) => handleKeyDown(index, e)}
-                  className="w-12 h-12 text-center text-lg font-bold"
+                  onClick={() => handleInputClick(index)}
+                  onPaste={handlePaste}
+                  className="w-12 h-12 text-center text-lg font-bold cursor-pointer"
                   maxLength={1}
                   disabled={isLocked || isLoading}
                   inputMode="numeric"
-                  autoFocus={index === 0}
+                  pattern="[0-9]*"
                 />
               ))}
             </div>
           </div>
 
-          {/* Status Messages */}
+          {/* Akses diblokir */}
           {isLocked && (
             <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
               <AlertCircle className="h-4 w-4 text-red-600" />
@@ -267,6 +277,7 @@ export function PinAuthentication({
             </div>
           )}
 
+          {/* PIN salah tapi belum dikunci */}
           {!isLocked && attempts > 0 && (
             <div className="flex items-center gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
               <AlertCircle className="h-4 w-4 text-yellow-600" />
@@ -277,14 +288,9 @@ export function PinAuthentication({
             </div>
           )}
 
-          {/* Action Buttons */}
+          {/* Tombol */}
           <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              onClick={onCancel} 
-              className="flex-1 bg-transparent"
-              disabled={isLoading}
-            >
+            <Button variant="outline" onClick={onCancel} className="flex-1 bg-transparent" disabled={isLoading}>
               Batal
             </Button>
             <Button
@@ -292,19 +298,13 @@ export function PinAuthentication({
               className="flex-1 gap-2"
               disabled={isLocked || pin.join("").length !== 6 || isLoading}
             >
-              {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <User className="h-4 w-4" />
-              )}
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <User className="h-4 w-4" />}
               Masuk
             </Button>
           </div>
 
-          {/* Help Text */}
           <div className="text-center text-xs text-muted-foreground">
             <p>Gunakan PIN yang sudah terdaftar di sistem</p>
-            <p>Semua user dengan PIN valid dapat mengakses</p>
           </div>
         </div>
       </DialogContent>
