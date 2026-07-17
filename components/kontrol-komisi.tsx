@@ -17,7 +17,7 @@ import {
     Users, DollarSign, AlertTriangle, TrendingUp,
     Sparkles, Search, Download, Eye, Edit
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { supabase, setupTransactionsRealtime, subscribeToEvents } from "@/lib/supabase";
 
 // Helper functions
 const formatRupiah = (value: number): string => {
@@ -117,7 +117,7 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
         // Scroll to top when component mounts
         window.scrollTo({ top: 0, behavior: 'instant' });
         loadData();
-    }, []);
+    }, [employees]); // Add employees as dependency so it reloads if prop changes
 
     // Rebuild employee statuses when employees change
     useEffect(() => {
@@ -128,16 +128,10 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
 
     // Setup realtime subscriptions
     useEffect(() => {
-        const transactionChannel = supabase
-            .channel('commission-transactions')
-            .on('postgres_changes', 
-                { event: '*', schema: 'public', table: 'transaction_items' },
-                (payload) => {
-                    console.log('📡 Transaction change detected, reloading...');
-                    loadData();
-                }
-            )
-            .subscribe();
+        const transactionsChannel = setupTransactionsRealtime(() => {
+            console.log('📡 Transaction change detected, reloading...');
+            loadData();
+        });
 
         const commissionChannel = supabase
             .channel('commission-rules-changes')
@@ -150,8 +144,14 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
             )
             .subscribe();
 
+        const globalChannel = subscribeToEvents((event: string, payload: any) => {
+            if (event === 'transaction_created' || event === 'transaction_deleted' || event === 'transaction_updated') {
+                loadData();
+            }
+        });
+
         return () => {
-            supabase.removeChannel(transactionChannel);
+            supabase.removeChannel(transactionsChannel);
             supabase.removeChannel(commissionChannel);
         };
     }, []);
@@ -185,26 +185,30 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                 .from('transaction_items')
                 .select(`
                     *,
-                    users:barber_id(name)
+                    users:barber_id(name),
+                    transactions:transaction_id(server_id)
                 `)
                 .order('created_at', { ascending: false })
                 .limit(100);
 
             if (!transactionsError && transactionsData) {
-                const formattedTransactions: TransactionItem[] = transactionsData.map((item: any) => ({
-                    id: item.id,
-                    transaction_id: item.transaction_id,
-                    barber_id: item.barber_id,
-                    service_id: item.service_id,
-                    quantity: item.quantity,
-                    unit_price: item.unit_price,
-                    commission_type: item.commission_type,
-                    commission_value: item.commission_value,
-                    commission_amount: item.commission_amount,
-                    created_at: item.created_at,
-                    barber_name: item.users?.name || 'Unknown',
-                    service_name: item.service_name || 'Unknown' // Gunakan snapshot
-                }));
+                const formattedTransactions: TransactionItem[] = transactionsData.map((item: any) => {
+                    const resolvedBarberId = item.barber_id || item.transactions?.server_id;
+                    return {
+                        id: item.id,
+                        transaction_id: item.transaction_id,
+                        barber_id: resolvedBarberId,
+                        service_id: item.service_id,
+                        quantity: item.quantity,
+                        unit_price: item.unit_price,
+                        commission_type: item.commission_type,
+                        commission_value: item.commission_value,
+                        commission_amount: item.commission_amount,
+                        created_at: item.created_at,
+                        barber_name: item.users?.name || 'Unknown',
+                        service_name: item.service_name || 'Unknown' // Gunakan snapshot
+                    };
+                });
                 console.log('[loadData] Transactions loaded:', formattedTransactions.length);
                 setTransactions(formattedTransactions);
             }
@@ -509,8 +513,15 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
         (status.employee.email?.toLowerCase() || "").includes(searchQuery.toLowerCase())
     );
 
-    const pendingTransactions = transactions.filter(t => !t.commission_value);
-    const completedTransactions = transactions.filter(t => t.commission_value);
+    const isSingleEmployee = employees.length === 1;
+    const employee = isSingleEmployee ? employees[0] : null;
+
+    const relevantTransactions = isSingleEmployee && employee
+        ? transactions.filter(t => String(t.barber_id) === String(employee.id))
+        : transactions;
+
+    const pendingTransactions = relevantTransactions.filter(t => t.commission_amount === null || t.commission_amount === undefined);
+    const completedTransactions = relevantTransactions.filter(t => t.commission_amount !== null && t.commission_amount !== undefined);
 
     const getProgressColor = (configured: number, total: number) => {
         const percentage = total > 0 ? (configured / total) * 100 : 100;
@@ -534,9 +545,6 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
             </div>
         );
     }
-
-    const isSingleEmployee = employees.length === 1;
-    const employee = isSingleEmployee ? employees[0] : null;
 
     return (
         <div className="flex flex-col h-full bg-slate-50/50">

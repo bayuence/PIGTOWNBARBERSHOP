@@ -173,7 +173,7 @@ export function CashierManagement() {
   const [outletStock, setOutletStock] = useState<OutletStock[]>([])
   const [stockLoading, setStockLoading] = useState(false)
   const [lowStockAlerts, setLowStockAlerts] = useState<OutletStock[]>([])
-  const [filterType, setFilterType] = useState<"all" | "service" | "product">("all")
+  const [filterType, setFilterType] = useState<"all" | "service" | "product">("service")
 
   const [categoryForm, setCategoryForm] = useState({
     name: "",
@@ -1619,14 +1619,14 @@ export function CashierManagement() {
                 </div>
               ) : categories.filter(c =>
                   // Tampilkan kategori yang type-nya sesuai, atau yang tidak punya type (tampil di semua tab)
-                  c.type === filterType || c.type === null || c.type === undefined || c.type === ""
+                  c.type === filterType || !c.type
                 ).length === 0 ? (
                 <div className="col-span-full text-center py-8">
                   <p className="text-gray-600">Belum ada kategori. Tambahkan kategori pertama Anda!</p>
                 </div>
               ) : (
                 categories.filter(c =>
-                  c.type === filterType || c.type === null || c.type === undefined || c.type === ""
+                  c.type === filterType || !c.type
                 ).map((category) => (
                   <Card key={category.id} className="hover:shadow-md transition-shadow">
                     <CardContent className="p-4">
