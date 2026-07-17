@@ -341,27 +341,24 @@ export function CashierManagement() {
   const fetchCategories = async () => {
     try {
       setCategoriesLoading(true)
-      console.log("[v0] Fetching categories from Supabase...")
 
-      let query = supabase
+      const { data, error } = await supabase
         .from("service_categories")
         .select("*")
-        .eq("is_active", true)
         .order("name", { ascending: true })
-
-      const { data, error } = await query
 
       if (error) {
         console.error("[v0] Error fetching categories:", error)
         return
       }
 
-      console.log("[v0] Fetched categories:", data)
-      // Map database schema to frontend properties (mapping is_active to status)
+      // Map database schema ke frontend properties
       const mappedCategories = (data || []).map((cat: any) => ({
         ...cat,
-        status: cat.is_active ? "active" : "inactive",
-        type: cat.type || "service",
+        // Support is_active atau active atau tanpa kolom sama sekali
+        status: (cat.is_active === false || cat.active === false || cat.status === "inactive") ? "inactive" : "active",
+        // Kalau tidak ada kolom type, anggap bisa muncul di semua tab
+        type: cat.type || null,
         icon: cat.icon || "",
         sort_order: cat.sort_order || 0,
       }))
@@ -1464,16 +1461,16 @@ export function CashierManagement() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {lowStockAlerts.slice(0, 5).map((alert) => (
+              {lowStockAlerts.slice(0, 5).map((alert: any) => (
                 <div key={alert.id} className="flex items-center justify-between p-2 bg-white rounded">
                   <div>
-                    <div className="font-medium">{alert.service?.name}</div>
+                    <div className="font-medium">{alert.name || "-"}</div>
                     <div className="text-sm text-gray-600">
-                      {alert.branch?.name} - Stok: {alert.stock_quantity}
+                      Stok tersisa: <span className="font-semibold text-red-600">{alert.stock ?? 0}</span> unit
                     </div>
                   </div>
                   <Badge variant="destructive">
-                    Restok Needed
+                    Restok Segera
                   </Badge>
                 </div>
               ))}
@@ -1620,12 +1617,17 @@ export function CashierManagement() {
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto"></div>
                   <p className="mt-2 text-gray-600">Memuat kategori...</p>
                 </div>
-              ) : categories.filter(c => c.type === filterType || (!c.type && filterType === "service")).length === 0 ? (
+              ) : categories.filter(c =>
+                  // Tampilkan kategori yang type-nya sesuai, atau yang tidak punya type (tampil di semua tab)
+                  c.type === filterType || c.type === null || c.type === undefined || c.type === ""
+                ).length === 0 ? (
                 <div className="col-span-full text-center py-8">
                   <p className="text-gray-600">Belum ada kategori. Tambahkan kategori pertama Anda!</p>
                 </div>
               ) : (
-                categories.filter(c => c.type === filterType || (!c.type && filterType === "service")).map((category) => (
+                categories.filter(c =>
+                  c.type === filterType || c.type === null || c.type === undefined || c.type === ""
+                ).map((category) => (
                   <Card key={category.id} className="hover:shadow-md transition-shadow">
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between mb-3">
