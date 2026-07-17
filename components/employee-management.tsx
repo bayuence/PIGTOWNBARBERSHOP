@@ -758,7 +758,7 @@ function EmployeeManagement() {
                             <span className="xs:hidden">Tambah</span>
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto" onCloseAutoFocus={(e) => e.preventDefault()}>
                         <DialogHeader>
                             <DialogTitle className="text-lg md:text-xl">Tambah Karyawan Baru</DialogTitle>
                             <DialogDescription className="text-xs md:text-sm">Isi informasi karyawan baru yang akan ditambahkan</DialogDescription>
@@ -1244,7 +1244,7 @@ function EmployeeManagement() {
 
             {/* Modals for Specific Employee Actions */}
             <Dialog open={!!selectedEmployeeForKomisi} onOpenChange={(open) => !open && setSelectedEmployeeForKomisi(null)}>
-                <DialogContent className="w-[95vw] max-w-[95vw] h-[93vh] max-h-[93vh] overflow-hidden flex flex-col p-0 rounded-2xl border border-gray-200 bg-white shadow-2xl">
+                <DialogContent className="w-[95vw] max-w-[95vw] h-[93vh] max-h-[93vh] overflow-hidden flex flex-col p-0 rounded-2xl border border-gray-200 bg-white shadow-2xl" onCloseAutoFocus={(e) => e.preventDefault()}>
                     <DialogTitle className="sr-only">Komisi Karyawan</DialogTitle>
                     <div className="flex-1 overflow-hidden flex flex-col">
                         {selectedEmployeeForKomisi && <KontrolKomisi employees={[selectedEmployeeForKomisi]} />}
@@ -1253,7 +1253,7 @@ function EmployeeManagement() {
             </Dialog>
 
             <Dialog open={!!selectedEmployeeForPresensi} onOpenChange={(open) => !open && setSelectedEmployeeForPresensi(null)}>
-                <DialogContent className="w-[95vw] max-w-[95vw] h-[93vh] max-h-[93vh] overflow-hidden flex flex-col p-0 rounded-2xl border border-gray-200 bg-white shadow-2xl">
+                <DialogContent className="w-[95vw] max-w-[95vw] h-[93vh] max-h-[93vh] overflow-hidden flex flex-col p-0 rounded-2xl border border-gray-200 bg-white shadow-2xl" onCloseAutoFocus={(e) => e.preventDefault()}>
                     <DialogTitle className="sr-only">Presensi Karyawan</DialogTitle>
                     <div className="flex-1 overflow-hidden flex flex-col">
                         {selectedEmployeeForPresensi && <KontrolPresensi employees={[selectedEmployeeForPresensi]} />}
@@ -1262,7 +1262,7 @@ function EmployeeManagement() {
             </Dialog>
 
             <Dialog open={!!selectedEmployeeForGaji} onOpenChange={(open) => !open && setSelectedEmployeeForGaji(null)}>
-                <DialogContent className="w-[95vw] max-w-[95vw] h-[93vh] max-h-[93vh] overflow-hidden flex flex-col p-0 rounded-2xl border border-gray-200 bg-white shadow-2xl">
+                <DialogContent className="w-[95vw] max-w-[95vw] h-[93vh] max-h-[93vh] overflow-hidden flex flex-col p-0 rounded-2xl border border-gray-200 bg-white shadow-2xl" onCloseAutoFocus={(e) => e.preventDefault()}>
                     <DialogTitle className="sr-only">Penggajian Karyawan</DialogTitle>
                     <div className="flex-1 overflow-hidden flex flex-col">
                         {selectedEmployeeForGaji && <KontrolGaji employees={[selectedEmployeeForGaji]} employeeStats={{[selectedEmployeeForGaji.id]: employeeStats[selectedEmployeeForGaji.id]}} />}
@@ -1272,7 +1272,7 @@ function EmployeeManagement() {
 
             {/* 🔥 DIALOG BARU: MANAJEMEN HARI LIBUR */}
             <Dialog open={isAbsenceDialogOpen} onOpenChange={setIsAbsenceDialogOpen}>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent className="sm:max-w-md" onCloseAutoFocus={(e) => e.preventDefault()}>
                     <DialogHeader>
                         <DialogTitle>Manajemen Hari Libur</DialogTitle>
                         <DialogDescription>
@@ -1385,7 +1385,7 @@ function EmployeeManagement() {
 
             {/* Employee Detail Dialog */}
             <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" onCloseAutoFocus={(e) => e.preventDefault()}>
                     <DialogHeader>
                         <DialogTitle>Detail Karyawan</DialogTitle>
                         <DialogDescription>Informasi lengkap karyawan</DialogDescription>
@@ -1514,7 +1514,7 @@ function EmployeeManagement() {
 
             {/* Edit Employee Dialog */}
             <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                <DialogContent className="max-w-2xl">
+                <DialogContent className="max-w-2xl" onCloseAutoFocus={(e) => e.preventDefault()}>
                     <DialogHeader>
                         <DialogTitle>Edit Karyawan</DialogTitle>
                         <DialogDescription>Update informasi karyawan secara lengkap</DialogDescription>
@@ -1677,7 +1677,7 @@ function EmployeeManagement() {
 
             {/* Delete Confirmation Dialog */}
             <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-                <DialogContent>
+                <DialogContent onCloseAutoFocus={(e) => e.preventDefault()}>
                     <DialogHeader>
                         <DialogTitle>Konfirmasi Hapus Karyawan</DialogTitle>
                         <DialogDescription>

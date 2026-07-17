@@ -131,6 +131,25 @@
     @apply text-foreground;
     background: linear-gradient(135deg, #fef2f2 0%, #fecaca 100%);
   }
+
+  /* ============================================================
+   * FIX: Radix UI Dialog Scroll-Lock Bug
+   * Setelah Dialog ditutup, Radix kadang meninggalkan
+   * overflow:hidden + pointer-events:none pada body,
+   * membuat seluruh halaman tidak bisa diklik/scroll.
+   * Fix: paksa body selalu bisa scroll & pointer-events normal.
+   * ============================================================ */
+  body[data-scroll-locked] {
+    overflow: hidden !important;
+    pointer-events: auto !important;
+  }
+
+  /* Jika body sudah tidak scroll-locked, pastikan normal */
+  body:not([data-scroll-locked]) {
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    pointer-events: auto !important;
+  }
 }
 
 /* Mobile Responsive Utilities */

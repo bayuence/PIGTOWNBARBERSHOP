@@ -1022,7 +1022,7 @@ export function KontrolPresensi({ employees }: KontrolPresensiProps) {
       {/* ── PHOTO PREVIEW DIALOG ── */}
       {previewPhoto && (
         <Dialog open={!!previewPhoto} onOpenChange={o => { if (!o) setPreviewPhoto(null) }}>
-          <DialogContent className="w-[90vw] max-w-xl h-auto max-h-[85vh] overflow-hidden flex flex-col p-0 rounded-2xl border-0 shadow-2xl">
+          <DialogContent className="w-[90vw] max-w-xl h-auto max-h-[85vh] overflow-hidden flex flex-col p-0 rounded-2xl border-0 shadow-2xl" onCloseAutoFocus={(e) => e.preventDefault()}>
             <DialogHeader className="flex-shrink-0 bg-gradient-to-r from-red-600 to-orange-500 px-5 py-3.5">
               <DialogTitle className="text-base font-black text-white">
                 Preview — {format(new Date(previewPhoto.date), "dd MMM yyyy", { locale: id })}

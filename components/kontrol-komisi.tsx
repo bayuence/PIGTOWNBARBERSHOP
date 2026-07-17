@@ -303,6 +303,58 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
         setIsDialogOpen(true);
     };
 
+    // BUG-012 FIX: Setelah rule komisi diubah, sync ulang commission_amount
+    // di semua transaction_items yang sudah ada untuk employee + service tsb
+    const syncCommissionToTransactions = async (
+        employeeId: string,
+        serviceId: string,
+        type: 'percentage' | 'fixed',
+        value: number
+    ) => {
+        try {
+            // Ambil semua transaction_items untuk employee + service ini
+            // barber_id & service_id adalah INTEGER sesuai schema
+            const { data: items } = await supabase
+                .from('transaction_items')
+                .select('id, unit_price, quantity')
+                .eq('barber_id', Number(employeeId))
+                .eq('service_id', Number(serviceId));
+
+            if (!items || items.length === 0) return;
+
+            // Hitung ulang commission_amount untuk setiap item
+            const updates = items.map((item: any) => {
+                const total = Number(item.unit_price) * Number(item.quantity || 1);
+                const commissionAmount = type === 'percentage'
+                    ? (total * value) / 100
+                    : value * Number(item.quantity || 1);
+                return {
+                    id: item.id,
+                    commission_type: type,
+                    commission_value: value,
+                    commission_amount: Math.round(commissionAmount),
+                    commission_status: 'completed',
+                };
+            });
+
+            // Update semua items
+            for (const upd of updates) {
+                await supabase
+                    .from('transaction_items')
+                    .update({
+                        commission_type: upd.commission_type,
+                        commission_value: upd.commission_value,
+                        commission_amount: upd.commission_amount,
+                        commission_status: upd.commission_status,
+                    })
+                    .eq('id', upd.id);
+            }
+            console.log(`[syncCommission] Synced ${updates.length} transaction items for employee ${employeeId}, service ${serviceId}`);
+        } catch (err) {
+            console.error('[syncCommission] Error syncing commission to transactions:', err);
+        }
+    };
+
     const handleSaveCommission = async () => {
         if (!selectedEmployee || !selectedService || !commissionValue) {
             toast({
@@ -336,24 +388,33 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
         setLoading(true);
         try {
             if (editMode && editingCommissionId) {
-                // Update langsung via Supabase client
+                // BUG-011 FIX: Update rule komisi
                 const { error } = await supabase
                     .from('commission_rules')
                     .update({
                         commission_type: commissionType,
                         commission_value: value,
+                        commission_rate: value,
                     })
-                    .eq('id', editingCommissionId)
+                    .eq('id', editingCommissionId);
 
-                if (error) throw new Error(error.message)
+                if (error) throw new Error(error.message);
+
+                // BUG-012 FIX: Sync otomatis ke semua transaction_items terkait
+                await syncCommissionToTransactions(
+                    selectedEmployee.id,
+                    selectedService,
+                    commissionType,
+                    value
+                );
             } else {
-                // Cek duplikat dulu
+                // Cek duplikat: user_id & service_id adalah INTEGER sesuai schema
                 const { data: existing } = await supabase
                     .from('commission_rules')
                     .select('id')
-                    .eq('user_id', parseInt(selectedEmployee.id))
-                    .eq('service_id', parseInt(selectedService))
-                    .maybeSingle()
+                    .eq('user_id', Number(selectedEmployee.id))
+                    .eq('service_id', Number(selectedService))
+                    .maybeSingle();
 
                 if (existing) {
                     toast({
@@ -365,24 +426,34 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                     return;
                 }
 
-                // Insert baru
+                // Insert: user_id & service_id adalah INTEGER sesuai schema
                 const { error } = await supabase
                     .from('commission_rules')
                     .insert({
-                        user_id: parseInt(selectedEmployee.id),
-                        service_id: parseInt(selectedService),
+                        user_id: Number(selectedEmployee.id),
+                        service_id: Number(selectedService),
                         commission_type: commissionType,
                         commission_value: value,
                         commission_rate: value,
                         is_active: true,
-                    })
+                    });
 
-                if (error) throw new Error(error.message)
+                if (error) throw new Error(error.message);
+
+                // BUG-012 FIX: Sync ke transaction_items yang belum punya komisi
+                await syncCommissionToTransactions(
+                    selectedEmployee.id,
+                    selectedService,
+                    commissionType,
+                    value
+                );
             }
 
             toast({
                 title: "Berhasil",
-                description: editMode ? "Komisi berhasil diupdate" : "Komisi berhasil ditambahkan"
+                description: editMode
+                    ? "Komisi berhasil diupdate dan disinkronkan ke semua transaksi"
+                    : "Komisi berhasil ditambahkan dan diterapkan ke transaksi yang ada"
             });
 
             setIsDialogOpen(false);
@@ -520,8 +591,17 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
         ? transactions.filter(t => String(t.barber_id) === String(employee.id))
         : transactions;
 
-    const pendingTransactions = relevantTransactions.filter(t => t.commission_amount === null || t.commission_amount === undefined);
-    const completedTransactions = relevantTransactions.filter(t => t.commission_amount !== null && t.commission_amount !== undefined);
+    // BUG-011 FIX: commission_amount=0 juga dianggap belum diatur (pending)
+    const pendingTransactions = relevantTransactions.filter(t =>
+        t.commission_amount === null ||
+        t.commission_amount === undefined ||
+        t.commission_amount === 0
+    );
+    const completedTransactions = relevantTransactions.filter(t =>
+        t.commission_amount !== null &&
+        t.commission_amount !== undefined &&
+        t.commission_amount > 0
+    );
 
     const getProgressColor = (configured: number, total: number) => {
         const percentage = total > 0 ? (configured / total) * 100 : 100;
