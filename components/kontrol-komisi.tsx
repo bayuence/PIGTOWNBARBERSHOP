@@ -381,6 +381,32 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                 if (error) throw new Error(error.message)
             }
 
+            // AUTO-APPLY: Terapkan rule ini ke transaksi lama yang masih 'pending_rule'
+            const { data: pendingTx } = await supabase
+                .from('transaction_items')
+                .select('id, unit_price, quantity')
+                .eq('barber_id', parseInt(selectedEmployee.id))
+                .eq('service_id', parseInt(selectedService))
+                .eq('commission_status', 'pending_rule');
+
+            if (pendingTx && pendingTx.length > 0) {
+                for (const tx of pendingTx) {
+                    const commissionAmount = commissionType === 'percentage' 
+                        ? (tx.unit_price * tx.quantity * value) / 100
+                        : value;
+
+                    await supabase
+                        .from('transaction_items')
+                        .update({
+                            commission_type: commissionType,
+                            commission_value: value,
+                            commission_amount: commissionAmount,
+                            commission_status: 'completed'
+                        })
+                        .eq('id', tx.id);
+                }
+            }
+
             toast({
                 title: "Berhasil",
                 description: editMode ? "Komisi berhasil diupdate" : "Komisi berhasil ditambahkan"
