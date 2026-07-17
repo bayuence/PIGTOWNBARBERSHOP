@@ -1,0 +1,30 @@
+ ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of C:\Users\ragec\package-lock.json as the root directory.
+ To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+ Detected additional lockfiles: 
+   * C:\Users\ragec\Downloads\encedev\PIGTOWNBARBERSHOP\pnpm-lock.yaml
+
+------------------------|---------|----------|---------|---------|-------------------
+File                    | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
+------------------------|---------|----------|---------|---------|-------------------
+All files               |     100 |      100 |     100 |     100 |                   
+ branch-helpers.ts      |     100 |      100 |     100 |     100 |                   
+ employee-helpers.ts    |     100 |      100 |     100 |     100 |                   
+ pos-helpers.ts         |     100 |      100 |     100 |     100 |                   
+ receipt-helpers.ts     |     100 |      100 |     100 |     100 |                   
+ transaction-helpers.ts |     100 |      100 |     100 |     100 |                   
+------------------------|---------|----------|---------|---------|-------------------
+
+=============================== Coverage summary ===============================
+Statements   : 100% ( 614/614 )
+Branches     : 100% ( 336/336 )
+Functions    : 100% ( 143/143 )
+Lines        : 100% ( 551/551 )
+================================================================================
+
+Test Suites: 5 passed, 5 total
+Tests:       244 passed, 244 total
+Snapshots:   0 total
+Time:        2.209 s
+Ran all test suites.
