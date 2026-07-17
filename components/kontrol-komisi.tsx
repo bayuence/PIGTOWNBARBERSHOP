@@ -86,6 +86,7 @@ interface TransactionItem {
     commission_type?: string | null;
     commission_value?: number | null;
     commission_amount?: number | null;
+    commission_status?: string | null;
     created_at: string;
     barber_name?: string;
     service_name?: string;
@@ -180,20 +181,19 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
             console.log('[loadData] Commission rules loaded:', rulesData?.length);
             setCommissionRules(rulesData || []);
 
-            // Load recent transactions - gunakan snapshot data
             const { data: transactionsData, error: transactionsError } = await supabase
                 .from('transaction_items')
                 .select(`
                     *,
-                    users:barber_id(name),
                     transactions:transaction_id(server_id)
                 `)
                 .order('created_at', { ascending: false })
-                .limit(100);
+                .limit(1000);
 
             if (!transactionsError && transactionsData) {
                 const formattedTransactions: TransactionItem[] = transactionsData.map((item: any) => {
                     const resolvedBarberId = item.barber_id || item.transactions?.server_id;
+                    const matchedEmployee = employees.find(e => String(e.id) === String(resolvedBarberId));
                     return {
                         id: item.id,
                         transaction_id: item.transaction_id,
@@ -204,8 +204,9 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                         commission_type: item.commission_type,
                         commission_value: item.commission_value,
                         commission_amount: item.commission_amount,
+                        commission_status: item.commission_status,
                         created_at: item.created_at,
-                        barber_name: item.users?.name || 'Unknown',
+                        barber_name: matchedEmployee ? matchedEmployee.name : 'Unknown',
                         service_name: item.service_name || 'Unknown' // Gunakan snapshot
                     };
                 });
@@ -411,15 +412,38 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
 
         setLoading(true);
         try {
-            const res = await fetch(`/api/commissions?id=${commissionId}`, {
-                method: 'DELETE'
-            });
-            const json = await res.json();
-            if (!res.ok) throw new Error(json.error || 'Gagal hapus komisi');
+            // Dapatkan info rule terlebih dahulu
+            const { data: rule } = await supabase
+                .from('commission_rules')
+                .select('user_id, service_id')
+                .eq('id', commissionId)
+                .single();
+
+            if (rule) {
+                // Hapus aturan master
+                const { error: deleteError } = await supabase
+                    .from('commission_rules')
+                    .delete()
+                    .eq('id', commissionId);
+
+                if (deleteError) throw deleteError;
+
+                // Reset transaksi yang bersangkutan (sesuai permintaan user)
+                await supabase
+                    .from('transaction_items')
+                    .update({
+                        commission_amount: 0,
+                        commission_status: 'pending_rule',
+                        commission_type: null,
+                        commission_value: null
+                    })
+                    .eq('barber_id', rule.user_id)
+                    .eq('service_id', rule.service_id);
+            }
 
             toast({
                 title: "Berhasil",
-                description: "Komisi berhasil dihapus"
+                description: "Komisi berhasil dihapus dan transaksi direset"
             });
 
             loadData();
@@ -461,10 +485,19 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
             return;
         }
 
-        if (commissionType === 'percentage' && (value < 0 || value > 100)) {
+        if (commissionType === 'percentage' && (value <= 0 || value > 100)) {
             toast({
                 title: "Error",
-                description: "Persentase harus antara 0-100",
+                description: "Persentase harus lebih dari 0 dan maksimal 100",
+                variant: "destructive"
+            });
+            return;
+        }
+
+        if (value <= 0) {
+            toast({
+                title: "Error",
+                description: "Nilai komisi tidak boleh 0 atau kurang",
                 variant: "destructive"
             });
             return;
@@ -489,6 +522,38 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                 .eq('id', selectedTransaction.id);
 
             if (error) throw error;
+
+            // Sinkronisasi dengan Aturan Komisi Master (Master Rule)
+            const { data: existingRule } = await supabase
+                .from('commission_rules')
+                .select('id')
+                .eq('user_id', parseInt(selectedTransaction.barber_id))
+                .eq('service_id', parseInt(selectedTransaction.service_id))
+                .maybeSingle();
+
+            if (!existingRule) {
+                // Insert aturan komisi master baru jika belum ada
+                await supabase
+                    .from('commission_rules')
+                    .insert({
+                        user_id: parseInt(selectedTransaction.barber_id),
+                        service_id: parseInt(selectedTransaction.service_id),
+                        commission_type: commissionType,
+                        commission_value: value,
+                        commission_rate: value, // Backward compatibility
+                        is_active: true,
+                    });
+            } else {
+                // Update aturan komisi master yang sudah ada
+                await supabase
+                    .from('commission_rules')
+                    .update({
+                        commission_type: commissionType,
+                        commission_value: value,
+                        commission_rate: value,
+                    })
+                    .eq('id', existingRule.id);
+            }
 
             toast({
                 title: "Berhasil!",
@@ -520,8 +585,8 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
         ? transactions.filter(t => String(t.barber_id) === String(employee.id))
         : transactions;
 
-    const pendingTransactions = relevantTransactions.filter(t => t.commission_amount === null || t.commission_amount === undefined);
-    const completedTransactions = relevantTransactions.filter(t => t.commission_amount !== null && t.commission_amount !== undefined);
+    const pendingTransactions = relevantTransactions.filter(t => t.commission_amount === null || t.commission_amount === undefined || t.commission_status === 'pending_rule' || (t.commission_amount === 0 && t.commission_status !== 'completed' && t.commission_status !== 'credited'));
+    const completedTransactions = relevantTransactions.filter(t => !(t.commission_amount === null || t.commission_amount === undefined || t.commission_status === 'pending_rule' || (t.commission_amount === 0 && t.commission_status !== 'completed' && t.commission_status !== 'credited')));
 
     const getProgressColor = (configured: number, total: number) => {
         const percentage = total > 0 ? (configured / total) * 100 : 100;
@@ -1205,8 +1270,8 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                     </Button>
                     <Button
                         onClick={handleSaveCommission}
-                        disabled={loading}
-                        className="flex-1 h-11 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold"
+                        disabled={loading || !selectedService || !commissionValue || parseNominal(commissionValue) <= 0 || (commissionType === 'percentage' && parseNominal(commissionValue) > 100)}
+                        className="flex-1 h-11 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {loading ? (
                             <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Menyimpan...</>
@@ -1329,8 +1394,8 @@ export function KontrolKomisi({ employees = [] }: { employees?: Employee[] }) {
                     </Button>
                     <Button
                         onClick={handleSaveTransactionCommission}
-                        disabled={loading}
-                        className="flex-1 h-11 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold"
+                        disabled={loading || !commissionValue || parseNominal(commissionValue) <= 0 || (commissionType === 'percentage' && parseNominal(commissionValue) > 100)}
+                        className="flex-1 h-11 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {loading ? (
                             <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Menyimpan...</>
