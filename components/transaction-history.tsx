@@ -855,6 +855,7 @@ export function TransactionHistory() {
             if (itemError) throw itemError
 
             if (item.barber_id && item.service_id) {
+              // 1. Simpan/Update Master Rule
               const { error: ruleError } = await supabase
                 .from('commission_rules')
                 .upsert({
@@ -862,10 +863,39 @@ export function TransactionHistory() {
                   service_id: item.service_id,
                   commission_type: type,
                   commission_value: value,
+                  commission_rate: value, // Wajib diisi karena constraint NOT NULL
+                  is_active: true
                 }, { onConflict: 'user_id,service_id' })
 
               if (ruleError) {
                 console.warn('Warning: Failed to save commission rule:', ruleError)
+              }
+
+              // 2. AUTO-APPLY ke semua transaksi pending lainnya untuk karyawan & layanan ini
+              const { data: pendingTx } = await supabase
+                .from('transaction_items')
+                .select('id, unit_price, quantity')
+                .eq('barber_id', item.barber_id)
+                .eq('service_id', item.service_id)
+                .eq('commission_status', 'pending_rule')
+                .neq('id', item.id); // Kecuali yang sedang kita edit ini
+
+              if (pendingTx && pendingTx.length > 0) {
+                for (const tx of pendingTx) {
+                  const autoCommissionAmount = type === 'percentage'
+                    ? (tx.unit_price * value / 100) * tx.quantity
+                    : value * tx.quantity;
+                  
+                  await supabase
+                    .from('transaction_items')
+                    .update({
+                      commission_status: 'credited',
+                      commission_type: type,
+                      commission_value: value,
+                      commission_amount: autoCommissionAmount
+                    })
+                    .eq('id', tx.id);
+                }
               }
             }
 

@@ -10,7 +10,6 @@
 # production
 /build
 
-Laporan*
 
 # debug
 npm-debug.log*
