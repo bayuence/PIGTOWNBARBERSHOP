@@ -779,7 +779,7 @@ export function DailyInsight() {
               <DollarSign className="h-3.5 w-3.5" />
               Total Pendapatan
             </CardDescription>
-            <CardTitle className="text-lg md:text-xl lg:text-2xl xl:text-3xl font-extrabold text-slate-800 dark:text-white truncate">
+            <CardTitle className="text-base md:text-lg xl:text-xl font-extrabold text-slate-800 dark:text-white leading-tight break-words">
               {formatRupiah(metrics.totalRevenue)}
             </CardTitle>
           </CardHeader>
@@ -809,7 +809,7 @@ export function DailyInsight() {
               <ShoppingBag className="h-3.5 w-3.5" />
               Pengeluaran Cabang
             </CardDescription>
-            <CardTitle className="text-lg md:text-xl lg:text-2xl xl:text-3xl font-extrabold text-slate-800 dark:text-white truncate">
+            <CardTitle className="text-base md:text-lg xl:text-xl font-extrabold text-slate-800 dark:text-white leading-tight break-words">
               {formatRupiah(metrics.totalExpenses)}
             </CardTitle>
           </CardHeader>
@@ -834,7 +834,7 @@ export function DailyInsight() {
               <Users className="h-3.5 w-3.5" />
               Kasbon Karyawan
             </CardDescription>
-            <CardTitle className="text-lg md:text-xl lg:text-2xl xl:text-3xl font-extrabold text-slate-800 dark:text-white truncate">
+            <CardTitle className="text-base md:text-lg xl:text-xl font-extrabold text-slate-800 dark:text-white leading-tight break-words">
               {formatRupiah(metrics.totalKasbon)}
             </CardTitle>
           </CardHeader>
@@ -859,7 +859,7 @@ export function DailyInsight() {
               <Award className="h-3.5 w-3.5" />
               Total Komisi Karyawan
             </CardDescription>
-            <CardTitle className="text-lg md:text-xl lg:text-2xl xl:text-3xl font-extrabold text-slate-800 dark:text-white truncate">
+            <CardTitle className="text-base md:text-lg xl:text-xl font-extrabold text-slate-800 dark:text-white leading-tight break-words">
               {formatRupiah(totalCommissions)}
             </CardTitle>
           </CardHeader>
@@ -880,7 +880,7 @@ export function DailyInsight() {
               <Send className="h-3.5 w-3.5" />
               Total Setoran Diterima
             </CardDescription>
-            <CardTitle className="text-lg md:text-xl lg:text-2xl xl:text-3xl font-extrabold text-slate-800 dark:text-white truncate">
+            <CardTitle className="text-base md:text-lg xl:text-xl font-extrabold text-slate-800 dark:text-white leading-tight break-words">
               {formatRupiah(metrics.totalDeposits)}
             </CardTitle>
           </CardHeader>
@@ -912,7 +912,7 @@ export function DailyInsight() {
               <Banknote className="h-3.5 w-3.5" />
               Estimasi Uang di Laci
             </CardDescription>
-            <CardTitle className="text-lg md:text-xl lg:text-2xl xl:text-3xl font-extrabold text-slate-800 dark:text-white truncate">
+            <CardTitle className="text-base md:text-lg xl:text-xl font-extrabold text-slate-800 dark:text-white leading-tight break-words">
               {formatRupiah(metrics.cashInDrawer)}
             </CardTitle>
           </CardHeader>
