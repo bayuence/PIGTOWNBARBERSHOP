@@ -143,6 +143,7 @@ export function DailyInsight() {
   const [isSubmittingSetor, setIsSubmittingSetor] = useState(false)
   const [setorLoadingMessage, setSetorLoadingMessage] = useState("")
   const [depositList, setDepositList] = useState<any[]>([])
+  const [todayDepositList, setTodayDepositList] = useState<any[]>([])
   // Validation errors
   const [setorErrors, setSetorErrors] = useState<{ amount?: string; proof?: string; branch?: string; employee?: string }>({})
   const [setorTouched, setSetorTouched] = useState<{ amount?: boolean; proof?: boolean; branch?: boolean; employee?: boolean }>({})
@@ -191,8 +192,8 @@ export function DailyInsight() {
     initData()
   }, [router])
 
-  // Fetch report data
-  const fetchDeposits = async (branchId: string) => {
+  // Fetch today's deposits for the setor modal
+  const fetchTodayDeposits = async (branchId: string) => {
     try {
       const todayStart = new Date()
       todayStart.setHours(0, 0, 0, 0)
@@ -203,9 +204,9 @@ export function DailyInsight() {
         .order("deposit_date", { ascending: false })
       if (branchId !== "all") q = q.eq("branch_id", branchId)
       const { data } = await q
-      setDepositList(data || [])
+      setTodayDepositList(data || [])
     } catch (err) {
-      console.error("Error fetching deposits:", err)
+      console.error("Error fetching today's deposits:", err)
     }
   }
 
@@ -319,7 +320,8 @@ export function DailyInsight() {
       setSetorLoadingMessage("")
 
       // 5. Refresh daftar deposit
-      await fetchDeposits(selectedBranch)
+      await fetchTodayDeposits(selectedBranch)
+      await fetchData()
 
       alert(`✅ Setoran ${formatRupiah(setorRawValue)} berhasil dicatat!`)
     } catch (err: any) {
@@ -415,6 +417,22 @@ export function DailyInsight() {
       }
       setTransactionItems(itemsList)
       setTotalCommissions(commAmount)
+
+      // 5. Fetch approved/pending deposits in selected date range
+      let depositQuery = supabase
+        .from("cash_deposits")
+        .select("*")
+        .gte("deposit_date", startISO)
+        .lte("deposit_date", endISO)
+        .order("deposit_date", { ascending: false })
+
+      if (selectedBranch !== "all") {
+        depositQuery = depositQuery.eq("branch_id", selectedBranch)
+      }
+
+      const { data: depData, error: depError } = await depositQuery
+      if (depError) throw depError
+      setDepositList(depData || [])
     } catch (err) {
       console.error("Error loading insights:", err)
     } finally {
@@ -426,7 +444,7 @@ export function DailyInsight() {
   useEffect(() => {
     if (usersList.length > 0) {
       fetchData()
-      fetchDeposits(selectedBranch)
+      fetchTodayDeposits(selectedBranch)
       setSelectedBarberFilter(null)
     }
   }, [datePreset, customStartDate, customEndDate, selectedBranch, usersList])
@@ -868,7 +886,9 @@ export function DailyInsight() {
           </CardHeader>
           <CardContent className="text-xs text-slate-500 flex flex-col justify-center min-h-[50px]">
             {depositList.filter((d) => d.status === "approved").length === 0 ? (
-              <span className="italic">Belum ada setoran diterima hari ini</span>
+              <span className="italic">
+                {datePreset === "today" ? "Belum ada setoran diterima hari ini" : "Belum ada setoran diterima periode ini"}
+              </span>
             ) : (
               <span className="font-semibold text-emerald-700 dark:text-emerald-400">
                 {depositList.filter((d) => d.status === "approved").length}x setoran diterima
@@ -1585,11 +1605,11 @@ export function DailyInsight() {
             </div>
 
             {/* Riwayat Setoran Hari Ini */}
-            {depositList.length > 0 && (
+            {todayDepositList.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Riwayat Setoran Hari Ini</p>
                 <div className="space-y-1.5 max-h-28 overflow-y-auto">
-                  {depositList.map((d: any) => (
+                  {todayDepositList.map((d: any) => (
                     <div key={d.id} className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-950/20 rounded-lg px-3 py-2">
                       <div>
                         <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400">{formatRupiah(d.amount)}</p>
