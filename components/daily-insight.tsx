@@ -647,16 +647,16 @@ export function DailyInsight() {
   }
 
   return (
-    <div className="p-4 lg:p-8 space-y-8 max-w-[1600px] mx-auto w-full">
+    <div className="p-3 md:p-4 lg:p-8 space-y-4 md:space-y-6 lg:space-y-8 max-w-[1600px] mx-auto w-full">
       {/* Header Section */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200/50 dark:border-slate-800/80 shadow-md">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white dark:bg-slate-900 p-4 md:p-6 rounded-2xl border border-slate-200/50 dark:border-slate-800/80 shadow-md">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 font-medium">
             <MapPin className="h-4 w-4 text-red-500" />
             <span>{currentBranchName}</span>
             {isOwnerOrManager && <Badge variant="secondary">Akses Manajemen</Badge>}
           </div>
-          <h1 className="text-2xl lg:text-3xl font-extrabold bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 dark:from-red-400 dark:via-rose-400 dark:to-orange-400 bg-clip-text text-transparent">
+          <h1 className="text-xl md:text-2xl lg:text-3xl font-extrabold bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 dark:from-red-400 dark:via-rose-400 dark:to-orange-400 bg-clip-text text-transparent">
             Insight Laporan Harian
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -679,9 +679,9 @@ export function DailyInsight() {
       </div>
 
       {/* Date & Branch Select Filter Row */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/50 dark:border-slate-800/80 shadow-md">
+      <div className="flex flex-col md:flex-row gap-3 md:gap-4 bg-white dark:bg-slate-900 p-4 md:p-5 rounded-2xl border border-slate-200/50 dark:border-slate-800/80 shadow-md">
         {/* Date presets selection */}
-        <div className="col-span-1 md:col-span-4 space-y-2">
+        <div className="flex-1 min-w-0 space-y-2">
           <Label className="text-sm font-semibold flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
             <Calendar className="h-4 w-4 text-red-500" />
             Rentang Waktu
@@ -714,7 +714,7 @@ export function DailyInsight() {
 
         {/* Custom date range fields (only when 'custom' selected) */}
         {datePreset === "custom" && (
-          <div className="col-span-1 md:col-span-4 grid grid-cols-2 gap-2">
+          <div className="flex-1 min-w-0 grid grid-cols-2 gap-2">
             <div className="space-y-2">
               <Label className="text-xs font-medium text-slate-500">Mulai</Label>
               <Input
@@ -738,7 +738,7 @@ export function DailyInsight() {
 
         {/* Branch selection (only visible for owner/manager) */}
         {isOwnerOrManager ? (
-          <div className="col-span-1 md:col-span-4 space-y-2 md:col-start-9">
+          <div className="w-full md:w-56 lg:w-64 flex-shrink-0 space-y-2">
             <Label className="text-sm font-semibold flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
               <MapPin className="h-4 w-4 text-red-500" />
               Cabang Toko
@@ -758,7 +758,7 @@ export function DailyInsight() {
             </Select>
           </div>
         ) : (
-          <div className="col-span-1 md:col-span-4 space-y-2 md:col-start-9 flex flex-col justify-end">
+          <div className="w-full md:w-56 lg:w-64 flex-shrink-0 space-y-2 flex flex-col justify-end">
             <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
               <span className="text-xs font-medium text-slate-500">Cabang Anda:</span>
               <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{currentBranchName}</span>
@@ -768,7 +768,7 @@ export function DailyInsight() {
       </div>
 
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 md:gap-4">
         {/* Total Revenue */}
         <Card className="relative overflow-hidden group border-slate-200/50 dark:border-slate-800/80 shadow-md hover:shadow-lg transition-all duration-300 bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/20 dark:to-slate-900">
           <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform duration-300">
@@ -779,7 +779,7 @@ export function DailyInsight() {
               <DollarSign className="h-3.5 w-3.5" />
               Total Pendapatan
             </CardDescription>
-            <CardTitle className="text-2xl lg:text-3xl font-extrabold text-slate-800 dark:text-white">
+            <CardTitle className="text-lg md:text-xl lg:text-2xl xl:text-3xl font-extrabold text-slate-800 dark:text-white truncate">
               {formatRupiah(metrics.totalRevenue)}
             </CardTitle>
           </CardHeader>
@@ -809,7 +809,7 @@ export function DailyInsight() {
               <ShoppingBag className="h-3.5 w-3.5" />
               Pengeluaran Cabang
             </CardDescription>
-            <CardTitle className="text-2xl lg:text-3xl font-extrabold text-slate-800 dark:text-white">
+            <CardTitle className="text-lg md:text-xl lg:text-2xl xl:text-3xl font-extrabold text-slate-800 dark:text-white truncate">
               {formatRupiah(metrics.totalExpenses)}
             </CardTitle>
           </CardHeader>
@@ -834,7 +834,7 @@ export function DailyInsight() {
               <Users className="h-3.5 w-3.5" />
               Kasbon Karyawan
             </CardDescription>
-            <CardTitle className="text-2xl lg:text-3xl font-extrabold text-slate-800 dark:text-white">
+            <CardTitle className="text-lg md:text-xl lg:text-2xl xl:text-3xl font-extrabold text-slate-800 dark:text-white truncate">
               {formatRupiah(metrics.totalKasbon)}
             </CardTitle>
           </CardHeader>
@@ -859,7 +859,7 @@ export function DailyInsight() {
               <Award className="h-3.5 w-3.5" />
               Total Komisi Karyawan
             </CardDescription>
-            <CardTitle className="text-2xl lg:text-3xl font-extrabold text-slate-800 dark:text-white">
+            <CardTitle className="text-lg md:text-xl lg:text-2xl xl:text-3xl font-extrabold text-slate-800 dark:text-white truncate">
               {formatRupiah(totalCommissions)}
             </CardTitle>
           </CardHeader>
@@ -880,7 +880,7 @@ export function DailyInsight() {
               <Send className="h-3.5 w-3.5" />
               Total Setoran Diterima
             </CardDescription>
-            <CardTitle className="text-2xl lg:text-3xl font-extrabold text-slate-800 dark:text-white">
+            <CardTitle className="text-lg md:text-xl lg:text-2xl xl:text-3xl font-extrabold text-slate-800 dark:text-white truncate">
               {formatRupiah(metrics.totalDeposits)}
             </CardTitle>
           </CardHeader>
@@ -912,7 +912,7 @@ export function DailyInsight() {
               <Banknote className="h-3.5 w-3.5" />
               Estimasi Uang di Laci
             </CardDescription>
-            <CardTitle className="text-2xl lg:text-3xl font-extrabold text-slate-800 dark:text-white">
+            <CardTitle className="text-lg md:text-xl lg:text-2xl xl:text-3xl font-extrabold text-slate-800 dark:text-white truncate">
               {formatRupiah(metrics.cashInDrawer)}
             </CardTitle>
           </CardHeader>
@@ -938,7 +938,7 @@ export function DailyInsight() {
       </div>
 
       {/* Main Breakdown Section (Expenses, Kasbon & Barber performance side-by-side) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6 lg:gap-8">
         {/* Barber performance (Revenue per Barber) */}
         <Card className="lg:col-span-6 border-slate-200/50 dark:border-slate-800/80 shadow-md">
           <CardHeader className="border-b border-slate-100 dark:border-slate-800">

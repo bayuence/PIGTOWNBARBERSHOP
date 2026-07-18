@@ -17,7 +17,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [user, setUser] = useState < User | null > (null)
     const [isLoaded, setIsLoaded] = useState(false)
     const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-    const [isCollapsed, setIsCollapsed] = useState(false) // Lifted state for sidebar collapse
+    const [isCollapsed, setIsCollapsed] = useState(true) // Default collapsed on tablet
     const router = useRouter()
     const pathname = usePathname()
 
@@ -58,14 +58,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {/* Overlay untuk mobile - z-40, di bawah sidebar tapi di atas konten */}
             {isSidebarOpen && (
                 <div
-                    className="fixed inset-0 bg-black/70 z-40 lg:hidden"
+                    className="fixed inset-0 bg-black/70 z-40 md:hidden"
                     onClick={() => setIsSidebarOpen(false)}
                 />
             )}
 
             {/* Main content area - DYNAMIC MARGIN berdasarkan collapsed state */}
-            <div className={`min-h-screen flex flex-col transition-all duration-300 ${isCollapsed ? "lg:ml-20" : "lg:ml-64"
-                }`}>
+            <div className={`min-h-screen flex flex-col transition-all duration-300 ${isCollapsed ? "md:ml-16" : "md:ml-64"}`}>
                 {/* Header MERAH - SKIP untuk Owner Dashboard */}
                 {!isOwnerRoute && <Header user={user} onMenuClick={() => setIsSidebarOpen(true)} />}
 

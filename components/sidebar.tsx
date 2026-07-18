@@ -105,8 +105,9 @@ export default function Sidebar({
 
   return (
     <div
-      className={`fixed top-0 left-0 bg-gradient-to-b from-red-900 via-red-800 to-black transition-all duration-300 h-full z-50 ${collapsed ? "w-20" : "w-64"
-        } ${isOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0`}
+      className={`fixed top-0 left-0 bg-gradient-to-b from-red-900 via-red-800 to-black transition-all duration-300 h-full z-50 ${
+        collapsed ? "w-16 md:w-16" : "w-64"
+      } ${isOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -115,7 +116,7 @@ export default function Sidebar({
         variant="ghost"
         size="icon"
         onClick={toggleSidebar}
-        className="hidden lg:flex absolute -right-4 top-6 z-50 bg-red-700 text-white hover:bg-red-600 rounded-full p-2 shadow-xl border-2 border-red-600 transition-all duration-300 transform hover:scale-110"
+        className="hidden md:flex absolute -right-4 top-6 z-50 bg-red-700 text-white hover:bg-red-600 rounded-full p-2 shadow-xl border-2 border-red-600 transition-all duration-300 transform hover:scale-110"
       >
         {collapsed ? (
           <ChevronRight className="h-5 w-5" />
@@ -129,7 +130,7 @@ export default function Sidebar({
         variant="ghost"
         size="icon"
         onClick={onClose}
-        className="lg:hidden absolute right-4 top-4 z-50 text-white hover:bg-red-800/50"
+        className="md:hidden absolute right-4 top-4 z-50 text-white hover:bg-red-800/50"
       >
         <X className="h-6 w-6" />
       </Button>
@@ -180,7 +181,7 @@ export default function Sidebar({
                   className={`w-full justify-start gap-3 h-14 transition-all duration-300 transform hover:scale-105 rounded-xl ${isActive
                       ? "bg-red-700/80 text-white border-2 border-red-600 shadow-lg"
                       : "text-red-200 hover:text-white hover:bg-red-800/50 border border-transparent hover:border-red-600/50"
-                    } ${collapsed ? "px-2" : "px-4"}`}
+                    } ${collapsed ? "px-0 justify-center" : "px-4"}`}
                   onClick={() => handleMenuClick(item.href)}
                 >
                   <IconComponent className={`h-5 w-5 flex-shrink-0 ${item.color}`} />
